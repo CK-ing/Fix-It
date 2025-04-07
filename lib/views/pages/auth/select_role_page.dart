@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'sign_up_page.dart';
+
 class SelectRolePage extends StatelessWidget {
   const SelectRolePage({super.key});
 
@@ -22,29 +24,42 @@ class SelectRolePage extends StatelessWidget {
           ),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            _buildRoleCard(
-              context,
-              icon: Icons.handyman, // 🔧 Hammer & wrench icon
-              label: 'Handyman',
-              onTap: () {
-                // Navigate to Handyman SignUp
-              },
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            child: Column(
+              children: [
+                _buildRoleCard(
+                  context,
+                  icon: Icons.handyman,
+                  label: 'Handyman',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SignUpPage(role: "Handyman"),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 32),
+                _buildRoleCard(
+                  context,
+                  icon: Icons.person,
+                  label: 'Homeowner',
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => SignUpPage(role: "Homeowner"),
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
-            const SizedBox(height: 32),
-            _buildRoleCard(
-              context,
-              icon: Icons.person, // 👤 Profile icon
-              label: 'Homeowner',
-              onTap: () {
-                // Navigate to Homeowner SignUp
-              },
-            ),
-          ],
+          ),
         ),
       ),
     );

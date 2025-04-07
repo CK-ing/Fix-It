@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../widget_tree.dart';
 import 'select_role_page.dart';
 
-class SignInPage extends StatelessWidget {
+class SignInPage extends StatefulWidget {
   const SignInPage({super.key});
+
+  @override
+  State<SignInPage> createState() => _SignInPageState();
+}
+
+class _SignInPageState extends State<SignInPage> {
+  bool _obscurePassword = true;
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +56,7 @@ class SignInPage extends StatelessWidget {
               const Text('Password', style: TextStyle(fontSize: 16)),
               const SizedBox(height: 8),
               TextField(
-                obscureText: true,
+                obscureText: _obscurePassword,
                 decoration: InputDecoration(
                   hintText: 'Password',
                   border: inputBorder,
@@ -56,7 +64,18 @@ class SignInPage extends StatelessWidget {
                   focusedBorder: inputBorder,
                   filled: true,
                   fillColor: Colors.white,
-                  suffixIcon: const Icon(Icons.visibility_off),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscurePassword = !_obscurePassword;
+                      });
+                    },
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -82,7 +101,14 @@ class SignInPage extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: () {},
+                  onPressed: () {
+                    Navigator.pushReplacement(
+  context,
+  MaterialPageRoute(
+    builder: (_) => WidgetTree(userRole: "Handyman"), // or "Homeowner"
+  ),
+);
+                  },
                   child: const Text(
                     'Sign In',
                     style: TextStyle(color: Colors.white, fontSize: 16),
@@ -131,9 +157,9 @@ class SignInPage extends StatelessWidget {
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
-  context,
-  MaterialPageRoute(builder: (_) => const SelectRolePage()),
-);
+                          context,
+                          MaterialPageRoute(builder: (_) => const SelectRolePage()),
+                        );
                       },
                       child: const Text(
                         "Sign up",

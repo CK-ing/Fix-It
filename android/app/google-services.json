@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "709988546672",
+    "firebase_url": "https://fix-it-2fe35-default-rtdb.firebaseio.com",
+    "project_id": "fix-it-2fe35",
+    "storage_bucket": "fix-it-2fe35.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:709988546672:android:828df0a96f6c3fd5901cb5",
+        "android_client_info": {
+          "package_name": "com.example.fixit_app_a186687"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "709988546672-343rgvea51nj9eeaj4l8l6tf51a11d4g.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAESI9bmSx7MrxQiqabEZ925m0RZPRg5oU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "709988546672-343rgvea51nj9eeaj4l8l6tf51a11d4g.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

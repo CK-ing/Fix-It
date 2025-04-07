@@ -1,9 +1,12 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:flutter/material.dart';
 
 import 'views/pages/auth/welcome_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(); // Required before using Firebase
   runApp(const MyApp());
 }
 
