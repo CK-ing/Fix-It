@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'select_role_page.dart';
+import 'sign_in_page.dart';
+
 class WelcomeScreen extends StatelessWidget {
+  const WelcomeScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -34,7 +39,10 @@ class WelcomeScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
                 child: ElevatedButton(
                   onPressed: () {
-                    // Navigate to sign up
+                    Navigator.push(
+  context,
+  MaterialPageRoute(builder: (_) => const SelectRolePage()),
+);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.blue[800],
@@ -55,7 +63,10 @@ class WelcomeScreen extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 20),
                 child: GestureDetector(
                   onTap: () {
-                    // Navigate to sign in
+                    Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const SignInPage()),
+                );
                   },
                   child: Text.rich(
                     TextSpan(
