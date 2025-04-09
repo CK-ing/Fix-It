@@ -78,32 +78,56 @@ class _SignUpPageState extends State<SignUpPage> {
   }
 
   Future<void> _signUpWithGoogle() async {
-    try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      final GoogleSignInAuthentication? googleAuth = await googleUser?.authentication;
+  try {
+    // Force account picker
+    await GoogleSignIn().signOut();
 
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth?.accessToken,
-        idToken: googleAuth?.idToken,
-      );
-
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
-      final user = userCredential.user;
-
-      await FirebaseDatabase.instance.ref("users/${user!.uid}").set({
-        'name': user.displayName,
-        'email': user.email,
-        'role': widget.role,
-      });
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => WidgetTree(userRole: widget.role)),
-      );
-    } catch (e) {
-      _showSnackBar("Google sign-in failed: $e");
+    final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+    if (googleUser == null) {
+      _showSnackBar("Google sign-in canceled");
+      return;
     }
+
+    final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+    final user = userCredential.user;
+
+    if (user == null) {
+      _showSnackBar("Google sign-in failed: No user found");
+      return;
+    }
+
+    final userSnapshot = await FirebaseDatabase.instance.ref("users/${user.uid}").get();
+
+    if (userSnapshot.exists) {
+      // User already registered
+      _showSnackBar("Account already exists. Please sign in instead.");
+      await FirebaseAuth.instance.signOut();
+      await GoogleSignIn().signOut();
+      return;
+    }
+
+    // User does not exist, continue sign up
+    await FirebaseDatabase.instance.ref("users/${user.uid}").set({
+      'name': user.displayName ?? '',
+      'email': user.email ?? '',
+      'role': widget.role,
+    });
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => WidgetTree(userRole: widget.role)),
+    );
+  } catch (e) {
+    _showSnackBar("Google sign-in failed: $e");
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -187,16 +211,16 @@ class _SignUpPageState extends State<SignUpPage> {
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
-              height: 50,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue[800],
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 onPressed: _signUpWithEmail,
-                child: const Text("Sign Up", style: TextStyle(color: Colors.white)),
+                child: const Text("Sign Up", style: TextStyle(color: Colors.white, fontSize: 16)),
               ),
             ),
             const SizedBox(height: 24),
@@ -213,13 +237,19 @@ class _SignUpPageState extends State<SignUpPage> {
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              height: 50,
               child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: Colors.grey),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 icon: Image.asset(
                   'assets/images/google_logo.png',
                   height: 24,
                 ),
-                label: const Text("Google"),
+                label: const Text("Google", style: TextStyle(fontSize: 16, color: Colors.black)),
                 onPressed: _signUpWithGoogle,
               ),
             ),

@@ -1,10 +1,38 @@
 import 'package:flutter/material.dart';
-
+import 'package:google_fonts/google_fonts.dart';
 import 'select_role_page.dart';
 import 'sign_in_page.dart';
 
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..forward();
+
+    _scaleAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutBack,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -15,16 +43,20 @@ class WelcomeScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App title
-              Text(
-                'Fixit',
-                style: TextStyle(
-                  fontSize: 40,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue[800],
+              // App title with animation
+              ScaleTransition(
+                scale: _scaleAnimation,
+                child: Text(
+                  'Fixit',
+                  style: GoogleFonts.poppins(
+                    fontSize: 48,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.blue[800],
+                    letterSpacing: 1.5,
+                  ),
                 ),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
 
               // Image
               Expanded(
@@ -34,26 +66,29 @@ class WelcomeScreen extends StatelessWidget {
                 ),
               ),
 
-              // Sign Up Button
+              // Sign Up Button (styled, function preserved)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 10),
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-  context,
-  MaterialPageRoute(builder: (_) => const SelectRolePage()),
-);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    minimumSize: Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SelectRolePage()),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue[800],
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    'Sign Up',
-                    style: TextStyle(fontSize: 18),
+                    child: const Text(
+                      "Sign Up",
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
                   ),
                 ),
               ),
@@ -64,14 +99,14 @@ class WelcomeScreen extends StatelessWidget {
                 child: GestureDetector(
                   onTap: () {
                     Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const SignInPage()),
-                );
+                      context,
+                      MaterialPageRoute(builder: (context) => const SignInPage()),
+                    );
                   },
                   child: Text.rich(
                     TextSpan(
                       text: 'Already have an account? ',
-                      style: TextStyle(color: Colors.black),
+                      style: const TextStyle(color: Colors.black),
                       children: [
                         TextSpan(
                           text: 'Sign in',
@@ -84,7 +119,7 @@ class WelcomeScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-              )
+              ),
             ],
           ),
         ),

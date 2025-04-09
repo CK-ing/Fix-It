@@ -71,13 +71,18 @@ class SelectRolePage extends StatelessWidget {
     required String label,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Card(
-        elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+    return Card(
+      color: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.blue.shade100),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        splashColor: Colors.blue.withOpacity(0.2),
+        highlightColor: Colors.blue.withOpacity(0.1),
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 32),
@@ -87,14 +92,15 @@ class SelectRolePage extends StatelessWidget {
               Icon(
                 icon,
                 size: 100,
-                color: Colors.black87,
+                color: Colors.blue[800],
               ),
               const SizedBox(height: 16),
               Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.blue[900],
                 ),
               ),
             ],
