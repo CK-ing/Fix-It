@@ -28,17 +28,20 @@ class _ProfilePageState extends State<ProfilePage> {
       final ref = FirebaseDatabase.instance.ref().child('users').child(user!.uid);
       final snapshot = await ref.get();
 
-      if (snapshot.exists) {
+      
+      if(mounted){
+        if (snapshot.exists) {
         final data = Map<String, dynamic>.from(snapshot.value as Map);
         setState(() {
           name = data['name'] ?? 'Unknown';
           email = data['email'] ?? '';
-          profileImageUrl = data['profilePicture'] ?? 'assets/images/default_profile.png';
+          profileImageUrl = (data['profileImageUrl'] as String?) ?? 'assets/images/default_profile.png';
         });
       } else {
         setState(() {
           name = 'No data found';
         });
+      }
       }
     }
   }
@@ -83,6 +86,7 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               CircleAvatar(
                 radius: 40,
+                backgroundColor: Colors.white,
                 backgroundImage: profileImageUrl.startsWith('http')
                     ? NetworkImage(profileImageUrl)
                     : AssetImage(profileImageUrl) as ImageProvider,
