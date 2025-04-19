@@ -4,7 +4,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart'; // Import Geolocator
 import 'package:geocoding/geocoding.dart';
 
-import '../../models/handyman_services.dart'; // Import Geocoding
+import '../../models/handyman_services.dart';
+import 'service_detail_page.dart'; // Import Geocoding
 
 class HomeownerHomePage extends StatefulWidget {
   const HomeownerHomePage({super.key});
@@ -300,15 +301,6 @@ class _HomeownerHomePageState extends State<HomeownerHomePage> {
      _filterServices(); // Apply filters
   }
 
-   // Handle service tap
-  void _onServiceTapped(String serviceId, String serviceName) {
-     print('Service Tapped: $serviceName (ID: $serviceId)');
-      ScaffoldMessenger.of(context).showSnackBar(
-       SnackBar(content: Text('Viewing details for $serviceName coming soon!')),
-     );
-     // TODO: Navigator.push(context, MaterialPageRoute(builder: (context) => ServiceDetailPage(serviceId: serviceId)));
-  }
-
   // Helper to safely call setState only if the widget is still mounted
   void setStateIfMounted(VoidCallback fn) {
     if (mounted) {
@@ -549,7 +541,16 @@ class _HomeownerHomePageState extends State<HomeownerHomePage> {
           clipBehavior: Clip.antiAlias,
           elevation: 3,
           child: InkWell(
-            onTap: () => _onServiceTapped(service.id, service.name),
+            onTap: () {
+                print('Navigating to details for Service ID: ${service.id}');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    // Ensure ServiceDetailPage is imported
+                    builder: (context) => ServiceDetailPage(serviceId: service.id),
+                  ),
+                );
+             },
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
