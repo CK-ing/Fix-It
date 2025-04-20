@@ -51,7 +51,7 @@ class _UpdateHandymanServicePageState extends State<UpdateHandymanServicePage> {
 
   // --- Dropdown Options (Same as Add Page) ---
   final List<String> _categories = [
-    'Plumbing', 'Electrical', 'Cleaning', 'Air Conditioning',
+    'Plumbing', 'Electrical', 'Cleaning', 'Air Cond',
     'Carpentry', 'Painting', 'Appliance Repair', 'Home Renovation', 'Other'
   ];
   final List<String> _priceTypes = ['Fixed', 'Hourly'];

@@ -254,7 +254,7 @@ class _BookServicePageState extends State<BookServicePage> {
            'total': _total,        // Already int (sen)
            // *** End of change ***
            'couponCode': _couponController.text.trim().isEmpty ? null : _couponController.text.trim(),
-           'status': "Pending Acceptance",
+           'status': "Pending",
            'bookingDateTime': ServerValue.timestamp, // Use server timestamp
         };
 
