@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 
+import 'book_service_page.dart';
+
 // TODO: Create and import a UserProfile model if desired
 // import 'package:fixit_app_a186687/models/user_profile.dart';
 
@@ -334,7 +336,29 @@ class _ServiceDetailPageState extends State<ServiceDetailPage> {
   // Build container for sticky button (remains same)
   Widget _buildBookingButtonContainer() {
      if (_isLoading || _serviceData == null) { return const SizedBox.shrink(); }
-     return Container( padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 12.0), decoration: BoxDecoration( color: Theme.of(context).scaffoldBackgroundColor, boxShadow: [ BoxShadow( color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2),)],), child: ElevatedButton.icon( icon: const Icon(Icons.calendar_month_outlined), label: const Text('Check Availability & Book'), style: ElevatedButton.styleFrom( padding: const EdgeInsets.symmetric(vertical: 14), textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),), onPressed: () { /* TODO: Navigate */ final handymanId = _serviceData?['handymanId']; print('Book Now tapped for service: ${widget.serviceId}, handyman: $handymanId'); ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Booking feature coming soon!')),);},),);
-  }
+     return Container( padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 12.0), decoration: BoxDecoration( color: Theme.of(context).scaffoldBackgroundColor, boxShadow: [ BoxShadow( color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, -2),)],), child: ElevatedButton.icon( icon: const Icon(Icons.calendar_month_outlined), label: const Text('Check Availability & Book'), style: ElevatedButton.styleFrom( padding: const EdgeInsets.symmetric(vertical: 14), textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),), 
+     onPressed: () {
+  // Get the handymanId from the fetched service data
+  final String? currentHandymanId = _serviceData?['handymanId'] as String?;
 
+  // Ensure handymanId is available before navigating
+  if (currentHandymanId != null) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BookServicePage(
+          serviceId: widget.serviceId, // Pass the current serviceId
+          handymanId: currentHandymanId, // Pass the handymanId
+        ),
+      ),
+    );
+  } else {
+    // Optional: Show an error if handymanId is missing for some reason
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Cannot proceed: Handyman details are missing for this service.')),
+    );
+    print('Error: Handyman ID is null for service ${widget.serviceId}');
+  }
+     })
+     );}
 }
