@@ -287,7 +287,9 @@ class _BookServicePageState extends State<BookServicePage> {
   @override
   Widget build(BuildContext context) {
     // ... (build method remains the same) ...
-    return Scaffold( appBar: AppBar( title: const Text('Book Service'), elevation: 1,), body: _isLoading ? const Center(child: CircularProgressIndicator()) : _error != null ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red))) : _buildBookingForm(), bottomNavigationBar: SafeArea( child: Padding( padding: const EdgeInsets.all(16.0), child: ElevatedButton( style: ElevatedButton.styleFrom( padding: const EdgeInsets.symmetric(vertical: 16), textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),), onPressed: _isBooking ? null : _showConfirmationDialog, child: _isBooking ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.0)) : const Text('Confirm Booking'),),),),);
+    return Scaffold( appBar: AppBar( title: const Text('Book Service'), elevation: 1,), body: _isLoading ? const Center(child: CircularProgressIndicator()) : _error != null ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red))) : _buildBookingForm(), bottomNavigationBar: SafeArea( child: Padding( padding: const EdgeInsets.all(16.0), child: ElevatedButton( style: ElevatedButton.styleFrom( backgroundColor: Theme.of(context).primaryColor, // Use theme's primary blue
+              foregroundColor: Colors.white, // Set text color to white
+              disabledBackgroundColor: Colors.grey[400],padding: const EdgeInsets.symmetric(vertical: 14), textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),), onPressed: _isBooking ? null : _showConfirmationDialog, child: _isBooking ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.0)) : const Text('Confirm Booking'),),),),);
   }
 
   // Main Form Widget
