@@ -30,7 +30,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late TextEditingController _descriptionController;
 
   String? _selectedCategory;
-  String? _selectedState;
   String? _establishedYear;
   bool? _isAvailable;
   String _role = '';
@@ -38,11 +37,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
   String _email = '';
 
   final List<String> _categories = ['Electrician', 'Plumber', 'Carpenter', 'Painter', 'Cleaner'];
-  final List<String> _states = [
-    'Johor', 'Kedah', 'Kelantan', 'Melaka', 'Negeri Sembilan', 'Pahang',
-    'Penang', 'Perak', 'Perlis', 'Sabah', 'Sarawak', 'Selangor',
-    'Terengganu', 'Kuala Lumpur', 'Putrajaya', 'Labuan'
-  ];
 
   @override
   void initState() {
@@ -66,7 +60,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
         _phoneController.text = data['phoneNumber'] ?? '';
         _addressController.text = data['address'] ?? '';
         _selectedCategory = data['category'];
-        _selectedState = data['areaOfService'];
         _establishedYear = data['establishedSince']?.toString();
         dynamic availabilityData = data['availability']; // Read dynamically
       if (availabilityData is bool) {
@@ -135,12 +128,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final Map<String, Object?> updateData = {
       'phoneNumber': _phoneController.text,
       'profileImageUrl': _downloadUrl,
+      'address': _addressController.text.trim(),
     };
     if (_role == 'Homeowner') {
-      updateData['address'] = _addressController.text;
     } else if (_role == 'Handyman') {
       updateData['category'] = _selectedCategory;
-      updateData['areaOfService'] = _selectedState;
       updateData['establishedSince'] = _establishedYear;
       updateData['availability'] = _isAvailable ?? false;
       updateData['description'] = _descriptionController.text;
@@ -192,11 +184,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     _buildField('Name', _name, enabled: false),
                     _buildField('Email', _email, enabled: false),
                     _buildTextField('Phone Number', _phoneController),
-                    if (!isHandyman)
-                      _buildLocationField('Address', _addressController, _getCurrentLocation),
+                    _buildLocationField(
+    isHandyman ? 'Company Address' : 'Home Address', // Dynamic label
+    _addressController,
+    _getCurrentLocation
+),
                     if (isHandyman) ...[
                       _buildDropdown('Category', _categories, _selectedCategory, (v) => setState(() => _selectedCategory = v)),
-                      _buildDropdown('Area of Service', _states, _selectedState, (v) => setState(() => _selectedState = v)),
                       _buildButtonField('Established Since', _establishedYear, _selectYear),
                       _buildDropdown(
   'Availability',
