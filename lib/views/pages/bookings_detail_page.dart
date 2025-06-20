@@ -62,7 +62,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     }
   }
 
-  // --- NEW: Helper function to create a notification ---
+  // Helper function to create a notification
   Future<void> _createNotification({
     required String userId,
     required String title,
@@ -83,7 +83,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     });
   }
 
-  // --- MODIFIED: _updateBookingStatus now creates notifications ---
+  // --- MODIFIED: This function now correctly fetches the ACTOR's name for notifications ---
   Future<void> _updateBookingStatus(String newStatus, [Map<String, dynamic>? additionalData]) async {
     if (_isProcessingAction) return;
     setStateIfMounted(() { _isProcessingAction = true; });
@@ -95,33 +95,61 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
       }
       await _dbRef.child('bookings').child(widget.bookingId).update(updates);
 
-      // --- Create Notification for Homeowner when Handyman acts ---
-      if (widget.userRole == 'Handyman' && _booking != null) {
+      // --- Notification Logic ---
+      if (_booking != null) {
         String? notificationTitle;
         String? notificationBody;
         String? notificationType;
+        String? targetUserId;
+        
+        // ** FIX: Get the name of the person performing the action (the "actor") **
+        // This is the most reliable way, as it fetches the current name from the database.
+        final actorSnapshot = await _dbRef.child('users/${_auth.currentUser!.uid}/name').get();
+        final actorName = actorSnapshot.value as String? ?? "Someone";
 
-        switch(newStatus) {
-          case 'Accepted':
-            notificationTitle = 'Booking Accepted!';
-            notificationBody = 'Your booking for "${_booking!.serviceName}" has been confirmed.';
-            notificationType = 'booking_accepted';
-            break;
-          case 'En Route':
-            notificationTitle = 'Handyman is On The Way!';
-            notificationBody = 'Your handyman for "${_booking!.serviceName}" is now en route.';
-            notificationType = 'booking_enroute';
-            break;
-          case 'Declined':
-             notificationTitle = 'Booking Declined';
-             notificationBody = 'Unfortunately, your booking for "${_booking!.serviceName}" was declined.';
-             notificationType = 'booking_declined';
-             break;
+        // Determine who to notify based on who is taking the action
+        if (widget.userRole == 'Handyman') {
+          // Handyman acts, notify Homeowner
+          targetUserId = _booking!.homeownerId;
+          switch(newStatus) {
+            case 'Accepted':
+              notificationTitle = 'Booking Accepted!';
+              notificationBody = '$actorName has confirmed your booking for "${_booking!.serviceName}".';
+              notificationType = 'booking_accepted';
+              break;
+            case 'En Route':
+              notificationTitle = 'Handyman is On The Way!';
+              notificationBody = '$actorName is now en route for your booking: "${_booking!.serviceName}".';
+              notificationType = 'booking_enroute';
+              break;
+            case 'Declined':
+              notificationTitle = 'Booking Declined';
+              notificationBody = 'Unfortunately, $actorName has declined your booking for "${_booking!.serviceName}".';
+              notificationType = 'booking_declined';
+              break;
+          }
+        } 
+        else if (widget.userRole == 'Homeowner') {
+          // Homeowner acts, notify Handyman
+          targetUserId = _booking!.handymanId;
+          switch(newStatus) {
+            case 'Cancelled':
+              notificationTitle = 'Booking Cancelled by Customer';
+              notificationBody = '$actorName has cancelled the booking for "${_booking!.serviceName}".';
+              notificationType = 'booking_cancelled';
+              break;
+            case 'Ongoing':
+              notificationTitle = 'Service Has Started';
+              notificationBody = '$actorName has marked the service for "${_booking!.serviceName}" as started.';
+              notificationType = 'booking_started';
+              break;
+          }
         }
 
-        if (notificationTitle != null && notificationBody != null && notificationType != null) {
+        // Send the notification if all data is available
+        if (targetUserId != null && notificationTitle != null && notificationBody != null && notificationType != null) {
           await _createNotification(
-            userId: _booking!.homeownerId,
+            userId: targetUserId,
             title: notificationTitle,
             body: notificationBody,
             type: notificationType,
@@ -142,7 +170,6 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     }
   }
 
-  // All other methods remain the same
   Future<void> _loadBookingDetails() async { try { final bookingSnapshot = await _dbRef.child('bookings').child(widget.bookingId).get(); if (!mounted || !bookingSnapshot.exists) throw Exception("Booking not found."); final tempBooking = Booking.fromSnapshot(bookingSnapshot); if (widget.userRole == 'Homeowner' && tempBooking.status == 'Completed') { _listenForReview(); } final otherPartyId = widget.userRole == 'Homeowner' ? tempBooking.handymanId : tempBooking.homeownerId; final results = await Future.wait([ if (tempBooking.serviceId.isNotEmpty) _dbRef.child('services').child(tempBooking.serviceId).get(), if (otherPartyId.isNotEmpty) _dbRef.child('users').child(otherPartyId).get(), ]); if (mounted) { Map<String, dynamic>? tempServiceDetails; Map<String, dynamic>? tempOtherPartyDetails; if (results.isNotEmpty && results[0] != null) { final serviceSnap = results[0] as DataSnapshot; if (serviceSnap.exists) { tempServiceDetails = Map<String, dynamic>.from(serviceSnap.value as Map); } } if (results.length > 1 && results[1] != null) { final userSnap = results[1] as DataSnapshot; if (userSnap.exists) { tempOtherPartyDetails = Map<String, dynamic>.from(userSnap.value as Map); } } setState(() { _booking = tempBooking; _serviceDetails = tempServiceDetails; _otherPartyDetails = tempOtherPartyDetails; _isLoading = false; _error = null; }); } } catch (e) { print("Error loading booking details: $e"); if (mounted) { setState(() { _isLoading = false; _error = "Failed to load details."; }); } } }
   void _listenForReview() { _reviewStreamSubscription?.cancel(); final query = _dbRef.child('reviews').orderByChild('bookingId').equalTo(widget.bookingId); _reviewStreamSubscription = query.onValue.listen((event) { if (mounted) { setStateIfMounted(() { _reviewExists = event.snapshot.exists; }); print("Real-time review check updated. Review exists: ${event.snapshot.exists}"); } }, onError: (error) { print("Error in review stream subscription: $error"); if (mounted) { setStateIfMounted(() { _reviewExists = false; }); } }); }
   Future<void> _makePhoneCall(String? phoneNumber) async { if (phoneNumber == null || phoneNumber.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number not available.'))); return; } final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber); try { if (await canLaunchUrl(launchUri)) { await launchUrl(launchUri); } else { throw 'Could not launch $launchUri'; } } catch(e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not launch phone dialer: $e'))); print('Could not launch $launchUri: $e'); } }

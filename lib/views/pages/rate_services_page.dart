@@ -1,6 +1,5 @@
-import 'dart:async';
 import 'dart:io';
-
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -172,6 +171,20 @@ class _RateServicesPageState extends State<RateServicesPage> {
       };
 
       await newReviewRef.set(reviewData);
+
+      // Create Notification for Handyman
+      final homeownerSnapshot = await _dbRef.child('users/${currentUser.uid}/name').get();
+      final homeownerName = homeownerSnapshot.value as String? ?? 'A customer';
+
+      final serviceName = _serviceData?['name'] ?? 'your service';
+      await _dbRef.child('notifications/${widget.handymanId}').push().set({
+        'title': 'You have a new review!',
+        'body': '$homeownerName left a $_rating-star review for "$serviceName".',
+        'bookingId': widget.bookingId,
+        'type': 'new_review',
+        'isRead': false,
+        'createdAt': ServerValue.timestamp,
+      });
 
       if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Thank you for your review!'), backgroundColor: Colors.green));
@@ -431,7 +444,7 @@ class _RateServicesPageState extends State<RateServicesPage> {
       enabled: !_isSubmitting,
       textCapitalization: TextCapitalization.sentences,
       decoration: InputDecoration(
-        hintText: 'Share more about your experience...\n(e.g., service quality, professionalism, punctuality)',
+        hintText: 'Share more about your experience.',
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide(color: Colors.grey.shade300)

@@ -120,7 +120,6 @@ class _PaymentPageState extends State<PaymentPage> {
       final Map<String, dynamic> atomicUpdate = {};
       atomicUpdate['/payments/$paymentId'] = paymentData;
       
-      // *** FIX: Manually create a map from the booking object to solve the missing toMap() method. ***
       final bookingMap = {
           'address': _booking!.address,
           'bookingDateTime': _booking!.bookingDateTime.millisecondsSinceEpoch,
@@ -143,15 +142,26 @@ class _PaymentPageState extends State<PaymentPage> {
           'total': _booking!.total,
       };
 
-      // Add the new updates to the map.
       bookingMap.addAll(bookingUpdates);
       
-      // Add the updated booking map to the atomic update.
       atomicUpdate['/bookings/${widget.bookingId}'] = bookingMap;
 
 
       // 4. Execute the atomic update
       await _dbRef.root.update(atomicUpdate);
+
+      // Create Notification for Handyman ---
+      final homeownerSnapshot = await _dbRef.child('users/${_booking!.homeownerId}/name').get();
+      final homeownerName = homeownerSnapshot.value as String? ?? 'Your customer';
+      
+      await _dbRef.child('notifications/${_booking!.handymanId}').push().set({
+        'title': 'Payment Received!',
+        'body': '$homeownerName has paid for the booking "${_booking!.serviceName}".',
+        'bookingId': widget.bookingId,
+        'type': 'payment_received',
+        'isRead': false,
+        'createdAt': ServerValue.timestamp,
+      });
 
       if (!mounted) return;
       

@@ -54,14 +54,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
   List<NotificationItem> _notifications = [];
   bool _isLoading = true;
   StreamSubscription? _notificationsSubscription;
+  
+  // *** NEW: Store the current user's role ***
+  String? _currentUserRole;
 
   @override
   void initState() {
     super.initState();
     _currentUser = _auth.currentUser;
     if (_currentUser != null) {
-      _listenForNotifications();
-      _markNotificationsAsRead();
+      _loadInitialData();
     } else {
       setState(() => _isLoading = false);
     }
@@ -71,6 +73,18 @@ class _NotificationsPageState extends State<NotificationsPage> {
   void dispose() {
     _notificationsSubscription?.cancel();
     super.dispose();
+  }
+
+  // *** NEW: Combined initial data loading ***
+  Future<void> _loadInitialData() async {
+    // First, get the user's role
+    final userSnapshot = await _dbRef.child('users/${_currentUser!.uid}/role').get();
+    if (mounted && userSnapshot.exists) {
+      _currentUserRole = userSnapshot.value as String?;
+    }
+    // Now start listening and marking as read
+    _listenForNotifications();
+    _markNotificationsAsRead();
   }
 
   void _listenForNotifications() {
@@ -102,7 +116,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
     });
   }
 
-  // Marks all unread notifications as read for the current user
   void _markNotificationsAsRead() {
     final notificationsRef = _dbRef.child('notifications/${_currentUser!.uid}');
     notificationsRef.get().then((snapshot) {
@@ -179,10 +192,21 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
   
+  // *** MODIFIED: Added icons for handyman notifications ***
   IconData _getIconForType(String type) {
     switch (type) {
+      // Homeowner notifications
       case 'booking_accepted': return Icons.check_circle_outline;
       case 'booking_enroute': return Icons.directions_car_outlined;
+      case 'booking_declined': return Icons.cancel_outlined;
+      
+      // Handyman notifications
+      case 'booking_cancelled': return Icons.highlight_off_outlined;
+      case 'booking_started': return Icons.play_circle_outline;
+      case 'payment_received': return Icons.monetization_on_outlined;
+      case 'new_review': return Icons.star_outline;
+      
+      // General
       case 'promotion': return Icons.local_offer_outlined;
       default: return Icons.notifications_none;
     }
@@ -241,13 +265,13 @@ class _NotificationsPageState extends State<NotificationsPage> {
             style: const TextStyle(color: Colors.grey, fontSize: 12),
           ),
           onTap: () {
-            if (notification.bookingId != null) {
-              // Navigate to the specific booking detail page
+            // *** MODIFIED: Use the fetched user role for correct navigation ***
+            if (notification.bookingId != null && _currentUserRole != null) {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => BookingDetailPage(
                   bookingId: notification.bookingId!,
-                  userRole: 'Homeowner', // Assuming only homeowners get notifications for now
+                  userRole: _currentUserRole!, // Pass the correct user role
                 )),
               );
             }
