@@ -1,3 +1,5 @@
+import 'dart:async'; // Import for StreamSubscription
+
 import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:fixit_app_a186687/views/pages/bookings_page.dart';
 import 'package:flutter/material.dart';
@@ -5,22 +7,21 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-// Import Page Widgets (ensure paths are correct)
+// Import Page Widgets
 import 'pages/homeowner_home_page.dart';
 import 'pages/handyman_home_page.dart';
 import 'pages/profile_page.dart';
 import 'widgets/navbar_widget.dart';
 import 'pages/auth/welcome_screen.dart';
-// *** Import Chat List Page ***
-import 'pages/chat_list_page.dart'; // Adjust path if needed
+import 'pages/chat_list_page.dart';
+import 'pages/notifications_page.dart'; // *** NEW: Import NotificationsPage ***
 
-// *** getPages function remains the same ***
 List<Widget> getPages(String userRole) {
   return [
-    userRole == "Handyman" ? const HandymanHomePage() : const HomeownerHomePage(), // Index 0
-    BookingsPage(userRole: userRole), // Index 1
-    const ChatListPage(), // Index 2
-    const ProfilePage(), // Index 3
+    userRole == "Handyman" ? const HandymanHomePage() : const HomeownerHomePage(),
+    BookingsPage(userRole: userRole),
+    const ChatListPage(),
+    const ProfilePage(),
   ];
 }
 
@@ -35,25 +36,73 @@ class _WidgetTreeState extends State<WidgetTree> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
+  User? _currentUser;
 
+  // Drawer State
   String _drawerUserName = "User";
   String _drawerUserEmail = "";
   String? _drawerUserPhotoUrl;
   bool _isLoadingDrawerData = true;
 
+  // --- NEW: Notification State ---
+  bool _hasUnreadNotifications = false;
+  StreamSubscription? _notificationsSubscription;
+
   @override
   void initState() {
     super.initState();
+    _currentUser = _auth.currentUser; // Get current user once
     _loadDrawerData();
     _requestAndSaveToken();
+    // *** NEW: Start listening for notifications if user is a homeowner ***
+    if (widget.userRole == 'Homeowner') {
+      _listenForUnreadNotifications();
+    }
   }
 
-  Future<void> _loadDrawerData() async { /* ... remains same ... */
+  @override
+  void dispose() {
+    // *** NEW: Cancel subscription to prevent memory leaks ***
+    _notificationsSubscription?.cancel();
+    super.dispose();
+  }
+  
+  void setStateIfMounted(VoidCallback fn) {
+    if (mounted) {
+      setState(fn);
+    }
+  }
+
+  // --- NEW: Real-time listener for the notification indicator ---
+  void _listenForUnreadNotifications() {
+    if (_currentUser == null) return;
+    _notificationsSubscription?.cancel(); // Cancel any old listener
+    final notificationsRef = _db.child('notifications/${_currentUser!.uid}');
+    
+    _notificationsSubscription = notificationsRef.onValue.listen((event) {
+      if (!mounted) return;
+      bool hasUnread = false;
+      if (event.snapshot.exists && event.snapshot.value != null) {
+        final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+        // Check if any notification has isRead: false or isRead is null
+        hasUnread = data.values.any((notification) => 
+          notification is Map && (notification['isRead'] == false || notification['isRead'] == null)
+        );
+      }
+      setStateIfMounted(() {
+        _hasUnreadNotifications = hasUnread;
+      });
+    }, onError: (error) {
+      print("Error listening for notifications in WidgetTree: $error");
+    });
+  }
+
+  Future<void> _loadDrawerData() async {
     final user = _auth.currentUser; if (user == null) { if (mounted) setState(() => _isLoadingDrawerData = false); return; } try { final snapshot = await _db.child('users').child(user.uid).get(); if (mounted && snapshot.exists && snapshot.value != null) { final data = Map<String, dynamic>.from(snapshot.value as Map); setState(() { _drawerUserName = data['name'] ?? user.displayName ?? "User"; _drawerUserEmail = data['email'] ?? user.email ?? ""; _drawerUserPhotoUrl = data['profileImageUrl']; _isLoadingDrawerData = false; }); } else { if (mounted) { setState(() { _drawerUserName = user.displayName ?? "User"; _drawerUserEmail = user.email ?? ""; _drawerUserPhotoUrl = user.photoURL; _isLoadingDrawerData = false; }); } } } catch (e) { print("Error loading drawer data: $e"); if (mounted && user != null) { setState(() { _drawerUserName = user.displayName ?? "User"; _drawerUserEmail = user.email ?? ""; _drawerUserPhotoUrl = user.photoURL; _isLoadingDrawerData = false; }); } else if (mounted) { setState(() => _isLoadingDrawerData = false); } }
   }
-  Future<void> _requestAndSaveToken() async { /* ... remains same ... */ await _requestNotificationPermission(); await _saveDeviceToken(); }
-  Future<void> _requestNotificationPermission() async { /* ... remains same ... */ FirebaseMessaging messaging = FirebaseMessaging.instance; try { NotificationSettings settings = await messaging.requestPermission( alert: true, announcement: false, badge: true, carPlay: false, criticalAlert: false, provisional: false, sound: true,); print('User granted permission: ${settings.authorizationStatus}'); } catch (e) { print('Error requesting notification permission: $e'); } }
-  Future<void> _saveDeviceToken() async { /* ... remains same ... */ final user = _auth.currentUser; if (user == null) return; try { String? fcmToken = await FirebaseMessaging.instance.getToken(); if (fcmToken != null) { print("FCM Token: $fcmToken"); DatabaseReference userRef = _db.child('users').child(user.uid); await userRef.update({'fcmToken': fcmToken}); print("FCM Token saved to database."); FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async { print("FCM Token Refreshed: $newToken"); try { await userRef.update({'fcmToken': newToken}); print("Refreshed FCM Token saved."); } catch (e) { print("Error saving refreshed token: $e"); } }); } else { print("Could not get FCM token."); } } catch (e) { print("Error getting/saving FCM token: $e"); } }
+  Future<void> _requestAndSaveToken() async { await _requestNotificationPermission(); await _saveDeviceToken(); }
+  Future<void> _requestNotificationPermission() async { FirebaseMessaging messaging = FirebaseMessaging.instance; try { NotificationSettings settings = await messaging.requestPermission( alert: true, announcement: false, badge: true, carPlay: false, criticalAlert: false, provisional: false, sound: true,); print('User granted permission: ${settings.authorizationStatus}'); } catch (e) { print('Error requesting notification permission: $e'); } }
+  Future<void> _saveDeviceToken() async { final user = _auth.currentUser; if (user == null) return; try { String? fcmToken = await FirebaseMessaging.instance.getToken(); if (fcmToken != null) { print("FCM Token: $fcmToken"); DatabaseReference userRef = _db.child('users').child(user.uid); await userRef.update({'fcmToken': fcmToken}); print("FCM Token saved to database."); FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async { print("FCM Token Refreshed: $newToken"); try { await userRef.update({'fcmToken': newToken}); print("Refreshed FCM Token saved."); } catch (e) { print("Error saving refreshed token: $e"); } }); } else { print("Could not get FCM token."); } } catch (e) { print("Error getting/saving FCM token: $e"); } }
 
 
   @override
@@ -62,29 +111,66 @@ class _WidgetTreeState extends State<WidgetTree> {
     return ValueListenableBuilder<int>(
       valueListenable: selectedPageNotifier,
       builder: (context, selectedPage, child) {
-        // Title function remains the same (returns "Chat" for index 2)
         String getTitle() {
           switch (selectedPage) { case 0: return currentUserRole == 'Handyman' ? 'Dashboard' : 'Fix It'; case 1: return 'Bookings'; case 2: return 'Chat'; case 3: return 'Profile'; default: return 'Fix It'; }
         }
-        // Actions function remains the same (no actions for index 2)
-        List<Widget> getActions() { if (selectedPage == 3) { return [ IconButton( icon: const Icon(Icons.settings_outlined), tooltip: 'Settings', onPressed: () { /* TODO */ print('Settings tapped'); },),]; } else if (selectedPage == 0 && currentUserRole == 'Handyman') { return [ IconButton( icon: const Icon(Icons.calendar_today_outlined), tooltip: 'Manage Availability', onPressed: () { /* TODO */ print('Manage Availability Tapped'); },),]; } else if (selectedPage == 0 && currentUserRole == 'Homeowner') { return [ IconButton( icon: const Icon(Icons.notifications_none_outlined), tooltip: 'Notifications', onPressed: () { /* TODO */ print('Notifications tapped'); },),]; } else { return []; } }
+        
+        // *** MODIFIED: getActions to show notification indicator and navigate ***
+        List<Widget> getActions() {
+          if (selectedPage == 3) {
+            return [ IconButton( icon: const Icon(Icons.settings_outlined), tooltip: 'Settings', onPressed: () { print('Settings tapped'); },),];
+          } else if (selectedPage == 0 && currentUserRole == 'Handyman') {
+            return [ IconButton( icon: const Icon(Icons.calendar_today_outlined), tooltip: 'Manage Availability', onPressed: () { print('Manage Availability Tapped'); },),];
+          } else if (selectedPage == 0 && currentUserRole == 'Homeowner') {
+            return [
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_none_outlined),
+                    tooltip: 'Notifications',
+                    onPressed: () {
+                      // Navigate to the new notifications page
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const NotificationsPage()),
+                      );
+                    },
+                  ),
+                  if (_hasUnreadNotifications)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 12, minHeight: 12),
+                      ),
+                    ),
+                ],
+              )
+            ];
+          } else {
+            return [];
+          }
+        }
+
         Widget? buildLeading(BuildContext context) { if (selectedPage == 0) { return IconButton( icon: const Icon(Icons.menu), tooltip: 'Open Menu', onPressed: () => _scaffoldKey.currentState?.openDrawer(),); } return null; }
 
         return Scaffold(
           key: _scaffoldKey,
-          // *** MODIFICATION: Build AppBar unless it's Bookings Page (index 1) ***
-          // Bookings page manages its own AppBar with Tabs
           appBar: selectedPage == 1
-                 ? null // Bookings page handles its own AppBar
-                 : AppBar( // Build AppBar for pages 0, 2, 3
-                     leading: buildLeading(context),
-                     automaticallyImplyLeading: false,
-                     title: Text(getTitle()),
-                     centerTitle: true,
-                     actions: getActions(),
-                     elevation: 1.0,
-                   ),
-          // *** END OF MODIFICATION ***
+              ? null
+              : AppBar(
+                  leading: buildLeading(context),
+                  automaticallyImplyLeading: false,
+                  title: Text(getTitle()),
+                  centerTitle: true,
+                  actions: getActions(),
+                  elevation: 1.0,
+                ),
           drawer: (selectedPage == 0) ? _buildDrawer(context, currentUserRole) : null,
           body: getPages(currentUserRole).elementAt(selectedPage),
           bottomNavigationBar: NavbarWidget(userRole: currentUserRole),

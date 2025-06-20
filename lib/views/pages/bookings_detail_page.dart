@@ -1,19 +1,14 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_database/firebase_database.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:fixit_app_a186687/models/bookings_services.dart';
+import 'package:fixit_app_a186687/views/pages/chat_page.dart';
 import 'package:fixit_app_a186687/views/pages/payment_page.dart';
 import 'package:fixit_app_a186687/views/pages/rate_services_page.dart';
-import 'package:fixit_app_a186687/views/pages/chat_page.dart';
-
-// TODO: Create these new pages
-// import 'report_issue_page.dart';
-// import 'receipt_page.dart';
-
-import '../../models/bookings_services.dart';
-import 'receipt_page.dart';
-import 'report_issue_page.dart';
+import 'package:fixit_app_a186687/views/pages/receipt_page.dart';
+import 'package:fixit_app_a186687/views/pages/report_issue_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class BookingDetailPage extends StatefulWidget {
   final String bookingId;
@@ -67,94 +62,90 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     }
   }
 
-  Future<void> _loadBookingDetails() async {
-    try {
-      final bookingSnapshot =
-          await _dbRef.child('bookings').child(widget.bookingId).get();
-      if (!mounted) return;
-      if (!bookingSnapshot.exists || bookingSnapshot.value == null) {
-        throw Exception('Booking not found or access denied.');
-      }
-
-      final tempBooking = Booking.fromSnapshot(bookingSnapshot);
-
-      if (widget.userRole == 'Homeowner' && tempBooking.status == 'Completed') {
-        _listenForReview();
-      }
-
-      final otherPartyId = widget.userRole == 'Homeowner'
-          ? tempBooking.handymanId
-          : tempBooking.homeownerId;
-
-      final results = await Future.wait([
-        if (tempBooking.serviceId.isNotEmpty)
-          _dbRef.child('services').child(tempBooking.serviceId).get(),
-        if (otherPartyId.isNotEmpty)
-          _dbRef.child('users').child(otherPartyId).get(),
-      ]);
-
-      if (mounted) {
-        Map<String, dynamic>? tempServiceDetails;
-        Map<String, dynamic>? tempOtherPartyDetails;
-      
-        if (results.isNotEmpty && results[0] != null) {
-            final serviceSnap = results[0] as DataSnapshot;
-            if (serviceSnap.exists) {
-              tempServiceDetails = Map<String, dynamic>.from(serviceSnap.value as Map);
-            }
-        }
-        if (results.length > 1 && results[1] != null) {
-            final userSnap = results[1] as DataSnapshot;
-             if (userSnap.exists) {
-              tempOtherPartyDetails = Map<String, dynamic>.from(userSnap.value as Map);
-            }
-        }
-
-        setState(() {
-          _booking = tempBooking;
-          _serviceDetails = tempServiceDetails;
-          _otherPartyDetails = tempOtherPartyDetails;
-          _isLoading = false;
-          _error = null;
-        });
-      }
-    } catch (e) {
-      print("Error loading booking details: $e");
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _error = "Failed to load details.";
-        });
-      }
-    }
-  }
-
-  void _listenForReview() {
-    _reviewStreamSubscription?.cancel();
-    
-    final query = _dbRef.child('reviews').orderByChild('bookingId').equalTo(widget.bookingId);
-    
-    _reviewStreamSubscription = query.onValue.listen((event) {
-      if (mounted) {
-        setStateIfMounted(() {
-          _reviewExists = event.snapshot.exists;
-        });
-        print("Real-time review check updated. Review exists: ${event.snapshot.exists}");
-      }
-    }, onError: (error) {
-      print("Error in review stream subscription: $error");
-      if (mounted) {
-        setStateIfMounted(() {
-          _reviewExists = false;
-        });
-      }
+  // --- NEW: Helper function to create a notification ---
+  Future<void> _createNotification({
+    required String userId,
+    required String title,
+    required String body,
+    required String type,
+    String? bookingId,
+  }) async {
+    final notificationsRef = _dbRef.child('notifications/$userId').push();
+    // Set notification data in Firebase
+    await notificationsRef.set({
+      'notificationId': notificationsRef.key,
+      'title': title,
+      'body': body,
+      'type': type,
+      'bookingId': bookingId,
+      'isRead': false, // Always set as unread initially
+      'createdAt': ServerValue.timestamp,
     });
   }
 
+  // --- MODIFIED: _updateBookingStatus now creates notifications ---
+  Future<void> _updateBookingStatus(String newStatus, [Map<String, dynamic>? additionalData]) async {
+    if (_isProcessingAction) return;
+    setStateIfMounted(() { _isProcessingAction = true; });
 
-  // --- All other existing functions remain the same ---
+    try {
+      Map<String, dynamic> updates = {'status': newStatus, 'updatedAt': ServerValue.timestamp};
+      if (additionalData != null) {
+        updates.addAll(additionalData);
+      }
+      await _dbRef.child('bookings').child(widget.bookingId).update(updates);
+
+      // --- Create Notification for Homeowner when Handyman acts ---
+      if (widget.userRole == 'Handyman' && _booking != null) {
+        String? notificationTitle;
+        String? notificationBody;
+        String? notificationType;
+
+        switch(newStatus) {
+          case 'Accepted':
+            notificationTitle = 'Booking Accepted!';
+            notificationBody = 'Your booking for "${_booking!.serviceName}" has been confirmed.';
+            notificationType = 'booking_accepted';
+            break;
+          case 'En Route':
+            notificationTitle = 'Handyman is On The Way!';
+            notificationBody = 'Your handyman for "${_booking!.serviceName}" is now en route.';
+            notificationType = 'booking_enroute';
+            break;
+          case 'Declined':
+             notificationTitle = 'Booking Declined';
+             notificationBody = 'Unfortunately, your booking for "${_booking!.serviceName}" was declined.';
+             notificationType = 'booking_declined';
+             break;
+        }
+
+        if (notificationTitle != null && notificationBody != null && notificationType != null) {
+          await _createNotification(
+            userId: _booking!.homeownerId,
+            title: notificationTitle,
+            body: notificationBody,
+            type: notificationType,
+            bookingId: widget.bookingId,
+          );
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Booking status updated to $newStatus.'), backgroundColor: Colors.green));
+        _loadBookingDetails();
+      }
+    } catch (e) {
+      print("Error updating booking status: $e");
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update booking: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setStateIfMounted(() { _isProcessingAction = false; });
+    }
+  }
+
+  // All other methods remain the same
+  Future<void> _loadBookingDetails() async { try { final bookingSnapshot = await _dbRef.child('bookings').child(widget.bookingId).get(); if (!mounted || !bookingSnapshot.exists) throw Exception("Booking not found."); final tempBooking = Booking.fromSnapshot(bookingSnapshot); if (widget.userRole == 'Homeowner' && tempBooking.status == 'Completed') { _listenForReview(); } final otherPartyId = widget.userRole == 'Homeowner' ? tempBooking.handymanId : tempBooking.homeownerId; final results = await Future.wait([ if (tempBooking.serviceId.isNotEmpty) _dbRef.child('services').child(tempBooking.serviceId).get(), if (otherPartyId.isNotEmpty) _dbRef.child('users').child(otherPartyId).get(), ]); if (mounted) { Map<String, dynamic>? tempServiceDetails; Map<String, dynamic>? tempOtherPartyDetails; if (results.isNotEmpty && results[0] != null) { final serviceSnap = results[0] as DataSnapshot; if (serviceSnap.exists) { tempServiceDetails = Map<String, dynamic>.from(serviceSnap.value as Map); } } if (results.length > 1 && results[1] != null) { final userSnap = results[1] as DataSnapshot; if (userSnap.exists) { tempOtherPartyDetails = Map<String, dynamic>.from(userSnap.value as Map); } } setState(() { _booking = tempBooking; _serviceDetails = tempServiceDetails; _otherPartyDetails = tempOtherPartyDetails; _isLoading = false; _error = null; }); } } catch (e) { print("Error loading booking details: $e"); if (mounted) { setState(() { _isLoading = false; _error = "Failed to load details."; }); } } }
+  void _listenForReview() { _reviewStreamSubscription?.cancel(); final query = _dbRef.child('reviews').orderByChild('bookingId').equalTo(widget.bookingId); _reviewStreamSubscription = query.onValue.listen((event) { if (mounted) { setStateIfMounted(() { _reviewExists = event.snapshot.exists; }); print("Real-time review check updated. Review exists: ${event.snapshot.exists}"); } }, onError: (error) { print("Error in review stream subscription: $error"); if (mounted) { setStateIfMounted(() { _reviewExists = false; }); } }); }
   Future<void> _makePhoneCall(String? phoneNumber) async { if (phoneNumber == null || phoneNumber.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number not available.'))); return; } final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber); try { if (await canLaunchUrl(launchUri)) { await launchUrl(launchUri); } else { throw 'Could not launch $launchUri'; } } catch(e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not launch phone dialer: $e'))); print('Could not launch $launchUri: $e'); } }
-  Future<void> _updateBookingStatus(String newStatus, [Map<String, dynamic>? additionalData]) async { if (_isProcessingAction) return; setState(() { _isProcessingAction = true; }); try { Map<String, dynamic> updates = {'status': newStatus, 'updatedAt': ServerValue.timestamp}; if (additionalData != null) { updates.addAll(additionalData); } await _dbRef.child('bookings').child(widget.bookingId).update(updates); if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Booking status updated to $newStatus.'), backgroundColor: Colors.green)); _loadBookingDetails(); } } catch (e) { print("Error updating booking status to $newStatus: $e"); if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update booking: $e'), backgroundColor: Colors.red)); } finally { if (mounted) setState(() { _isProcessingAction = false; }); } }
   Future<void> _acceptBooking() async { await _updateBookingStatus('Accepted'); }
   Future<void> _declineBooking(String reason) async { await _updateBookingStatus('Declined', {'declineReason': reason}); if (mounted) Navigator.pop(context); }
   Future<void> _cancelBookingByHomeowner(String reason) async { await _updateBookingStatus('Cancelled', {'cancellationReason': reason, 'cancelledBy': 'Homeowner'}); if (mounted) Navigator.pop(context); }
@@ -166,8 +157,6 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   void _showCancelDialogByHomeowner() { _showReasonDialog( title: 'Reason for Cancellation', hintText: 'Please provide a reason (required)', submitButtonText: 'Confirm Cancellation', submitButtonColor: Colors.orange, onSubmit: _cancelBookingByHomeowner, cancelText: 'Keep Booking'); }
   void _showCancelDialogByHandyman() { _showReasonDialog( title: 'Reason for Cancellation', hintText: 'Please provide a reason (required)', submitButtonText: 'Confirm Cancellation', submitButtonColor: Colors.purple, onSubmit: _cancelBookingByHandyman, cancelText: 'Keep Booking'); }
   void _showStartServiceConfirmation() { showDialog( context: context, builder: (context) => AlertDialog( title: const Text('Start Service?'), content: const Text('Are you sure you want to mark the service as started?'), actions: [ TextButton(onPressed: () => Navigator.pop(context), child: const Text('No')), ElevatedButton(onPressed: (){ Navigator.pop(context); _startService(); }, child: const Text('Yes, Start')),],)); }
-
-  // --- Build Widgets ---
   @override
   Widget build(BuildContext context) { String appBarTitle = 'Booking Details'; if (!_isLoading && _booking != null) { appBarTitle = _booking!.serviceName; } else if (_isLoading) { appBarTitle = 'Loading...'; } return Scaffold( backgroundColor: Colors.blue[50], appBar: AppBar( title: Text(appBarTitle), elevation: 1,), body: _buildContent(), bottomNavigationBar: SafeArea( child: _buildBottomActions() ?? const SizedBox.shrink(),)); }
   Widget _buildContent() { if (_isLoading) { return const Center(child: CircularProgressIndicator()); } if (_error != null) { return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text(_error!, style: const TextStyle(color: Colors.red)))); } if (_booking == null) { return const Center(child: Text('Booking details not found.')); } final otherPartyData = _otherPartyDetails; final otherPartyRoleLabel = widget.userRole == 'Homeowner' ? 'Handyman' : 'Customer'; return SingleChildScrollView( padding: const EdgeInsets.only(bottom: 120), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildCardWrapper( child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildServiceImage(), const SizedBox(height: 16), _buildBookingSummarySection(), _buildReasonSection(), const Divider(height: 24, thickness: 0.5), _buildBookingDescriptionSection(), const SizedBox(height: 16), _buildPriceDetailsSection(),],)), _buildCardWrapper(child: _buildPartyInfoContent(otherPartyData, otherPartyRoleLabel)), _buildCardWrapper(child: _buildReviewsContent()),],),); }
@@ -184,7 +173,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   Color _getStatusColor(String status) { switch (status) { case "Pending": return Colors.orange.shade700; case "Accepted": return Colors.blue.shade700; case "En Route": return Colors.cyan.shade600; case "Ongoing": return Colors.lightBlue.shade600; case "Completed": return Colors.green.shade700; case "Declined": return Colors.red.shade700; case "Cancelled": return Colors.grey.shade700; default: return Colors.grey; } }
   Widget _buildPriceRow(String label, int amountInSen, {bool isTotal = false}) { final double amountRM = amountInSen / 100.0; return Padding( padding: const EdgeInsets.symmetric(vertical: 2.0), child: Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ Text(label, style: TextStyle(fontSize: isTotal ? 15 : 14, fontWeight: isTotal ? FontWeight.bold : FontWeight.normal)), Text( 'RM ${amountRM.toStringAsFixed(2)}', style: TextStyle(fontSize: isTotal ? 15 : 14, fontWeight: isTotal ? FontWeight.bold : FontWeight.normal))],),); }
   
-  // *** MODIFIED: Logic updated to include handyman role for new buttons ***
+  // This is the original, correct _buildBottomActions method
   Widget? _buildBottomActions() {
     if (_isLoading || _booking == null) return null;
     final ButtonStyle elevatedButtonStyle = ElevatedButton.styleFrom( padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10), textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),);
@@ -200,13 +189,11 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
       case 'Ongoing':
       if (widget.userRole == 'Homeowner') { return Padding( padding: const EdgeInsets.all(16.0), child: SizedBox( width: double.infinity, child: ElevatedButton( style: elevatedButtonStyle.copyWith(backgroundColor: MaterialStateProperty.all(Colors.teal)), onPressed: _isProcessingAction ? null : () { Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentPage(bookingId: _booking!.bookingId))); }, child: _isProcessingAction ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Pay Now'),),),); } else { return Container( padding: const EdgeInsets.all(16.0), width: double.infinity, child: Text('Service in progress. Waiting for payment.', textAlign: TextAlign.center, style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold)),); }
       case 'Completed':
-        // Both roles can see these buttons now
         return Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Only Homeowner can rate, and only if review doesn't exist
               if (widget.userRole == 'Homeowner' && !_reviewExists)
                 SizedBox(
                   width: double.infinity,
@@ -226,7 +213,6 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                     },
                   ),
                 ),
-              // Show this message to homeowner if they have already reviewed
               if (widget.userRole == 'Homeowner' && _reviewExists)
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -235,10 +221,8 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                     style: TextStyle(color: Colors.green[800], fontStyle: FontStyle.italic),
                   ),
                 ),
-              // Spacer for Homeowner view
               if (widget.userRole == 'Homeowner') const SizedBox(height: 12),
               
-              // Report and Receipt buttons visible to BOTH roles
               Row(
                 children: [
                   Expanded(
@@ -248,12 +232,12 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                       style: outlinedButtonStyle,
                       onPressed: () {
                         Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => ReportIssuePage(
-      bookingId: widget.bookingId,
-      userRole: widget.userRole,
-    )),
-  );
+                          context,
+                          MaterialPageRoute(builder: (_) => ReportIssuePage(
+                            bookingId: widget.bookingId,
+                            userRole: widget.userRole,
+                          )),
+                        );
                       },
                     ),
                   ),
@@ -265,11 +249,11 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                       style: outlinedButtonStyle,
                       onPressed: () {
                         Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => ReceiptPage(
-      bookingId: widget.bookingId,
-    )),
-  );
+                          context,
+                          MaterialPageRoute(builder: (_) => ReceiptPage(
+                            bookingId: widget.bookingId,
+                          )),
+                        );
                       },
                     ),
                   ),
