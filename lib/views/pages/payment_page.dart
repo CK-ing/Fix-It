@@ -4,8 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
 
-// Import your Booking model to use its properties
-import '../../models/bookings_services.dart'; 
+import '../../models/bookings_services.dart';
 
 class PaymentPage extends StatefulWidget {
   final String bookingId;
@@ -32,11 +31,10 @@ class _PaymentPageState extends State<PaymentPage> {
   String? _error;
   bool _isProcessingPayment = false;
 
-  // Static list of other payment options
   final List<Map<String, dynamic>> _newPaymentOptions = [
     {'id': 'add_card', 'name': 'Credit/Debit Card', 'icon': Icons.credit_card_outlined},
-    {'id': 'tng', 'name': 'Touch \'n Go eWallet', 'icon': Icons.wallet_giftcard_outlined}, // Placeholder icon
-    {'id': 'boost', 'name': 'Boost eWallet', 'icon': Icons.rocket_launch_outlined}, // Placeholder icon
+    {'id': 'tng', 'name': 'Touch \'n Go eWallet', 'icon': Icons.wallet_giftcard_outlined},
+    {'id': 'boost', 'name': 'Boost eWallet', 'icon': Icons.rocket_launch_outlined},
   ];
 
   @override
@@ -64,7 +62,6 @@ class _PaymentPageState extends State<PaymentPage> {
     }
 
     try {
-      // Fetch booking details
       final bookingSnapshot = await _dbRef.child('bookings').child(widget.bookingId).get();
       if (!mounted) return;
 
@@ -74,14 +71,9 @@ class _PaymentPageState extends State<PaymentPage> {
         throw Exception('Booking details not found.');
       }
       
-      // TODO: Fetch saved payment methods from users/{uid}/paymentMethods
-      // For now, we will use a default list including Cash.
       _savedPaymentMethods = [
         {'id': 'cash', 'name': 'Cash', 'icon': Icons.money_outlined},
-        // Example of a saved card - this would be fetched from user data
-        // {'id': 'card_1234', 'name': '**** **** **** 1234', 'icon': Icons.credit_card},
       ];
-
 
     } catch (e) {
       print("Error loading payment details: $e");
@@ -90,28 +82,79 @@ class _PaymentPageState extends State<PaymentPage> {
       if (mounted) setStateIfMounted(() { _isLoading = false; });
     }
   }
-
+  
   Future<void> _processPayment() async {
     if (_isProcessingPayment || _booking == null) return;
 
     setStateIfMounted(() { _isProcessingPayment = true; });
 
-    // --- PAYMENT SIMULATION ---
-    // In a real app, you would call your payment gateway SDK here.
-    // For this simulation, we'll just show a loading indicator for 2 seconds.
     await Future.delayed(const Duration(seconds: 2));
     
-    // --- UPDATE BOOKING STATUS ---
     try {
-      await _dbRef.child('bookings').child(widget.bookingId).update({
+      final newPaymentRef = _dbRef.child('payments').push();
+      final paymentId = newPaymentRef.key;
+      if (paymentId == null) {
+        throw Exception("Could not generate a payment ID.");
+      }
+
+      // 1. Prepare the new payment data
+      final Map<String, dynamic> paymentData = {
+        'paymentId': paymentId,
+        'bookingId': widget.bookingId,
+        'homeownerId': _booking!.homeownerId,
+        'handymanId': _booking!.handymanId,
+        'amount': _booking!.total, // Store total amount in sen
+        'paymentMethod': _selectedPaymentMethodId,
+        'status': 'Success',
+        'createdAt': ServerValue.timestamp,
+      };
+
+      // 2. Prepare the booking update data
+      final Map<String, dynamic> bookingUpdates = {
         'status': 'Completed',
+        'paymentId': paymentId, // This is good practice for linking
         'updatedAt': ServerValue.timestamp,
-        'paymentMethod': _selectedPaymentMethodId // Store the selected method
-      });
+      };
+
+      // 3. Create a map for the multi-path atomic update
+      final Map<String, dynamic> atomicUpdate = {};
+      atomicUpdate['/payments/$paymentId'] = paymentData;
+      
+      // *** FIX: Manually create a map from the booking object to solve the missing toMap() method. ***
+      final bookingMap = {
+          'address': _booking!.address,
+          'bookingDateTime': _booking!.bookingDateTime.millisecondsSinceEpoch,
+          'bookingId': _booking!.bookingId,
+          'cancellationReason': _booking!.cancellationReason,
+          'couponCode': _booking!.couponCode,
+          'declineReason': _booking!.declineReason,
+          'description': _booking!.description,
+          'handymanId': _booking!.handymanId,
+          'homeownerId': _booking!.homeownerId,
+          'price': _booking!.price,
+          'priceType': _booking!.priceType,
+          'quantity': _booking!.quantity,
+          'scheduledDateTime': _booking!.scheduledDateTime.toIso8601String(),
+          'serviceId': _booking!.serviceId,
+          'serviceName': _booking!.serviceName,
+          'status': _booking!.status,
+          'subtotal': _booking!.subtotal,
+          'tax': _booking!.tax,
+          'total': _booking!.total,
+      };
+
+      // Add the new updates to the map.
+      bookingMap.addAll(bookingUpdates);
+      
+      // Add the updated booking map to the atomic update.
+      atomicUpdate['/bookings/${widget.bookingId}'] = bookingMap;
+
+
+      // 4. Execute the atomic update
+      await _dbRef.root.update(atomicUpdate);
 
       if (!mounted) return;
       
-      // Show success dialog
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -143,16 +186,15 @@ class _PaymentPageState extends State<PaymentPage> {
         ),
       );
       
-      // Pop the payment page to go back to the booking details page
       if (mounted) {
         Navigator.of(context).pop();
       }
 
     } catch (e) {
-      print("Error updating booking status to Completed: $e");
+      print("Error during atomic payment update: $e");
       if(mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Payment simulation failed: ${e.toString()}'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Payment processing failed: ${e.toString()}'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -300,7 +342,6 @@ class _PaymentPageState extends State<PaymentPage> {
             title: Text(option['name']),
             trailing: const Icon(Icons.add, size: 20),
             onTap: () {
-              // SIMULATION: Show a snackbar message
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('Simulating adding a new ${option['name']}...'),

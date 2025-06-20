@@ -88,4 +88,6 @@ class Booking {
   String get formattedTotal {
       return (total / 100.0).toStringAsFixed(2);
   }
+
+  toMap() {}
 }

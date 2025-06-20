@@ -7,7 +7,13 @@ import 'package:fixit_app_a186687/views/pages/payment_page.dart';
 import 'package:fixit_app_a186687/views/pages/rate_services_page.dart';
 import 'package:fixit_app_a186687/views/pages/chat_page.dart';
 
+// TODO: Create these new pages
+// import 'report_issue_page.dart';
+// import 'receipt_page.dart';
+
 import '../../models/bookings_services.dart';
+import 'receipt_page.dart';
+import 'report_issue_page.dart';
 
 class BookingDetailPage extends StatefulWidget {
   final String bookingId;
@@ -35,9 +41,10 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   bool _isLoading = true;
   String? _error;
   bool _isProcessingAction = false;
-  
-  // *** NEW: State for checking if a review exists ***
+
   bool _reviewExists = false;
+  StreamSubscription? _reviewStreamSubscription;
+
 
   final TextEditingController _reasonController = TextEditingController();
 
@@ -50,87 +57,102 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   @override
   void dispose() {
     _reasonController.dispose();
+    _reviewStreamSubscription?.cancel();
     super.dispose();
   }
 
-  // Load all necessary details
-  Future<void> _loadBookingDetails({int retries = 1}) async {
-    if (!mounted) return;
-    if (_booking == null) {
-      setState(() { _isLoading = true; _error = null; });
+  void setStateIfMounted(VoidCallback fn) {
+    if (mounted) {
+      setState(fn);
     }
-    for (int i = 0; i < retries; i++) {
-      try {
-        final bookingSnapshot = await _dbRef.child('bookings').child(widget.bookingId).get();
-        if (!mounted) return;
-        if (!bookingSnapshot.exists || bookingSnapshot.value == null) {
-          throw Exception('Booking not found or access denied.');
+  }
+
+  Future<void> _loadBookingDetails() async {
+    try {
+      final bookingSnapshot =
+          await _dbRef.child('bookings').child(widget.bookingId).get();
+      if (!mounted) return;
+      if (!bookingSnapshot.exists || bookingSnapshot.value == null) {
+        throw Exception('Booking not found or access denied.');
+      }
+
+      final tempBooking = Booking.fromSnapshot(bookingSnapshot);
+
+      if (widget.userRole == 'Homeowner' && tempBooking.status == 'Completed') {
+        _listenForReview();
+      }
+
+      final otherPartyId = widget.userRole == 'Homeowner'
+          ? tempBooking.handymanId
+          : tempBooking.homeownerId;
+
+      final results = await Future.wait([
+        if (tempBooking.serviceId.isNotEmpty)
+          _dbRef.child('services').child(tempBooking.serviceId).get(),
+        if (otherPartyId.isNotEmpty)
+          _dbRef.child('users').child(otherPartyId).get(),
+      ]);
+
+      if (mounted) {
+        Map<String, dynamic>? tempServiceDetails;
+        Map<String, dynamic>? tempOtherPartyDetails;
+      
+        if (results.isNotEmpty && results[0] != null) {
+            final serviceSnap = results[0] as DataSnapshot;
+            if (serviceSnap.exists) {
+              tempServiceDetails = Map<String, dynamic>.from(serviceSnap.value as Map);
+            }
         }
-        _booking = Booking.fromSnapshot(bookingSnapshot);
-        if (!mounted || _booking == null) return;
-        
-        // *** NEW: Check for existing review if booking is completed ***
-        if (_booking!.status == 'Completed') {
-          await _checkIfReviewExists();
+        if (results.length > 1 && results[1] != null) {
+            final userSnap = results[1] as DataSnapshot;
+             if (userSnap.exists) {
+              tempOtherPartyDetails = Map<String, dynamic>.from(userSnap.value as Map);
+            }
         }
 
-        List<Future> futures = [];
-        if (_booking!.serviceId.isNotEmpty) {
-          futures.add(_dbRef.child('services').child(_booking!.serviceId).get().then((snap) {
-            if (mounted && snap.exists && snap.value != null) {
-              _serviceDetails = Map<String, dynamic>.from(snap.value as Map);
-            }
-          }).catchError((e) => print("Error fetching service details: $e")));
-        }
-        final otherPartyId = widget.userRole == 'Homeowner' ? _booking!.handymanId : _booking!.homeownerId;
-        if (otherPartyId.isNotEmpty) {
-          futures.add(_dbRef.child('users').child(otherPartyId).get().then((snap) {
-            if (mounted && snap.exists && snap.value != null) {
-              _otherPartyDetails = Map<String, dynamic>.from(snap.value as Map);
-            }
-          }).catchError((e) => print("Error fetching other party details: $e")));
-        }
-        if (futures.isNotEmpty) {
-          await Future.wait(futures);
-        }
-        if (mounted) setState(() { _isLoading = false; _error = null; });
-        return;
-      } catch (e) {
-        print("Error loading booking details (attempt ${i + 1}): $e");
-        if (i == retries - 1 && mounted) {
-          setState(() {
-            _isLoading = false;
-            _error = "Failed to load details.";
-          });
-        }
-        if (retries > 1) await Future.delayed(const Duration(seconds: 1));
+        setState(() {
+          _booking = tempBooking;
+          _serviceDetails = tempServiceDetails;
+          _otherPartyDetails = tempOtherPartyDetails;
+          _isLoading = false;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      print("Error loading booking details: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = "Failed to load details.";
+        });
       }
     }
   }
 
-  // *** NEW: Function to check if a review for this booking already exists ***
-  Future<void> _checkIfReviewExists() async {
-    try {
-      final query = _dbRef.child('reviews').orderByChild('bookingId').equalTo(widget.bookingId);
-      final snapshot = await query.get();
+  void _listenForReview() {
+    _reviewStreamSubscription?.cancel();
+    
+    final query = _dbRef.child('reviews').orderByChild('bookingId').equalTo(widget.bookingId);
+    
+    _reviewStreamSubscription = query.onValue.listen((event) {
       if (mounted) {
-        setState(() {
-          _reviewExists = snapshot.exists;
+        setStateIfMounted(() {
+          _reviewExists = event.snapshot.exists;
         });
+        print("Real-time review check updated. Review exists: ${event.snapshot.exists}");
       }
-    } catch(e) {
-      print("Error checking for existing review: $e");
-      // Assume no review exists on error to avoid blocking the user
+    }, onError: (error) {
+      print("Error in review stream subscription: $error");
       if (mounted) {
-        setState(() {
+        setStateIfMounted(() {
           _reviewExists = false;
         });
       }
-    }
+    });
   }
 
+
   // --- All other existing functions remain the same ---
-  // (_makePhoneCall, _updateBookingStatus, dialogs, etc.)
   Future<void> _makePhoneCall(String? phoneNumber) async { if (phoneNumber == null || phoneNumber.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number not available.'))); return; } final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber); try { if (await canLaunchUrl(launchUri)) { await launchUrl(launchUri); } else { throw 'Could not launch $launchUri'; } } catch(e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not launch phone dialer: $e'))); print('Could not launch $launchUri: $e'); } }
   Future<void> _updateBookingStatus(String newStatus, [Map<String, dynamic>? additionalData]) async { if (_isProcessingAction) return; setState(() { _isProcessingAction = true; }); try { Map<String, dynamic> updates = {'status': newStatus, 'updatedAt': ServerValue.timestamp}; if (additionalData != null) { updates.addAll(additionalData); } await _dbRef.child('bookings').child(widget.bookingId).update(updates); if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Booking status updated to $newStatus.'), backgroundColor: Colors.green)); _loadBookingDetails(); } } catch (e) { print("Error updating booking status to $newStatus: $e"); if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to update booking: $e'), backgroundColor: Colors.red)); } finally { if (mounted) setState(() { _isProcessingAction = false; }); } }
   Future<void> _acceptBooking() async { await _updateBookingStatus('Accepted'); }
@@ -147,8 +169,8 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
 
   // --- Build Widgets ---
   @override
-  Widget build(BuildContext context) { /* ... same as before ... */ String appBarTitle = 'Booking Details'; if (!_isLoading && _booking != null) { appBarTitle = _booking!.serviceName; } else if (_isLoading) { appBarTitle = 'Loading...'; } return Scaffold( backgroundColor: Colors.blue[50], appBar: AppBar( title: Text(appBarTitle), elevation: 1,), body: _buildContent(), bottomNavigationBar: SafeArea( child: _buildBottomActions() ?? const SizedBox.shrink(),)); }
-  Widget _buildContent() { /* ... same as before ... */ if (_isLoading) { return const Center(child: CircularProgressIndicator()); } if (_error != null) { return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text(_error!, style: const TextStyle(color: Colors.red)))); } if (_booking == null) { return const Center(child: Text('Booking details not found.')); } final otherPartyData = _otherPartyDetails; final otherPartyRoleLabel = widget.userRole == 'Homeowner' ? 'Handyman' : 'Customer'; return SingleChildScrollView( padding: const EdgeInsets.only(bottom: 120), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildCardWrapper( child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildServiceImage(), const SizedBox(height: 16), _buildBookingSummarySection(), _buildReasonSection(), const Divider(height: 24, thickness: 0.5), _buildBookingDescriptionSection(), const SizedBox(height: 16), _buildPriceDetailsSection(),],)), _buildCardWrapper(child: _buildPartyInfoContent(otherPartyData, otherPartyRoleLabel)), _buildCardWrapper(child: _buildReviewsContent()),],),); }
+  Widget build(BuildContext context) { String appBarTitle = 'Booking Details'; if (!_isLoading && _booking != null) { appBarTitle = _booking!.serviceName; } else if (_isLoading) { appBarTitle = 'Loading...'; } return Scaffold( backgroundColor: Colors.blue[50], appBar: AppBar( title: Text(appBarTitle), elevation: 1,), body: _buildContent(), bottomNavigationBar: SafeArea( child: _buildBottomActions() ?? const SizedBox.shrink(),)); }
+  Widget _buildContent() { if (_isLoading) { return const Center(child: CircularProgressIndicator()); } if (_error != null) { return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text(_error!, style: const TextStyle(color: Colors.red)))); } if (_booking == null) { return const Center(child: Text('Booking details not found.')); } final otherPartyData = _otherPartyDetails; final otherPartyRoleLabel = widget.userRole == 'Homeowner' ? 'Handyman' : 'Customer'; return SingleChildScrollView( padding: const EdgeInsets.only(bottom: 120), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildCardWrapper( child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildServiceImage(), const SizedBox(height: 16), _buildBookingSummarySection(), _buildReasonSection(), const Divider(height: 24, thickness: 0.5), _buildBookingDescriptionSection(), const SizedBox(height: 16), _buildPriceDetailsSection(),],)), _buildCardWrapper(child: _buildPartyInfoContent(otherPartyData, otherPartyRoleLabel)), _buildCardWrapper(child: _buildReviewsContent()),],),); }
   Widget _buildCardWrapper({required Widget child}) { return Card( margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0), elevation: 0, shape: RoundedRectangleBorder( borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300, width: 0.5)), color: Theme.of(context).cardColor, child: Padding( padding: const EdgeInsets.all(16.0), child: child,),); }
   Widget _buildServiceImage() { final imageUrl = _serviceDetails?['imageUrl'] as String?; return ClipRRect( borderRadius: BorderRadius.circular(8.0), child: Container( height: 180, width: double.infinity, color: Colors.grey[200], child: (imageUrl != null && imageUrl.isNotEmpty) ? Image.network( imageUrl, fit: BoxFit.cover, loadingBuilder: (context, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()), errorBuilder: (context, error, stack) => const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 40)),) : const Center(child: Icon(Icons.construction, color: Colors.grey, size: 40)),),); }
   Widget _buildBookingSummarySection() { return Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ Text( _booking!.serviceName, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),), const SizedBox(height: 12), _buildInfoRow(Icons.calendar_today_outlined, _booking!.formattedScheduledDateTime, textStyle: Theme.of(context).textTheme.titleSmall), const SizedBox(height: 6), Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ Flexible( child: _buildInfoRow(Icons.vpn_key_outlined, _booking!.bookingId, textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)) ), Chip( label: Text(_booking!.status, style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w500)), backgroundColor: _getStatusColor(_booking!.status), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0), visualDensity: VisualDensity.compact, side: BorderSide.none,),],)],); }
@@ -161,8 +183,8 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   Widget _buildSectionTitle(String title) { return Text( title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),); }
   Color _getStatusColor(String status) { switch (status) { case "Pending": return Colors.orange.shade700; case "Accepted": return Colors.blue.shade700; case "En Route": return Colors.cyan.shade600; case "Ongoing": return Colors.lightBlue.shade600; case "Completed": return Colors.green.shade700; case "Declined": return Colors.red.shade700; case "Cancelled": return Colors.grey.shade700; default: return Colors.grey; } }
   Widget _buildPriceRow(String label, int amountInSen, {bool isTotal = false}) { final double amountRM = amountInSen / 100.0; return Padding( padding: const EdgeInsets.symmetric(vertical: 2.0), child: Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ Text(label, style: TextStyle(fontSize: isTotal ? 15 : 14, fontWeight: isTotal ? FontWeight.bold : FontWeight.normal)), Text( 'RM ${amountRM.toStringAsFixed(2)}', style: TextStyle(fontSize: isTotal ? 15 : 14, fontWeight: isTotal ? FontWeight.bold : FontWeight.normal))],),); }
-
-  // *** MODIFIED: _buildBottomActions to handle 'Completed' status with review check ***
+  
+  // *** MODIFIED: Logic updated to include handyman role for new buttons ***
   Widget? _buildBottomActions() {
     if (_isLoading || _booking == null) return null;
     final ButtonStyle elevatedButtonStyle = ElevatedButton.styleFrom( padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10), textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),);
@@ -170,89 +192,92 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     
     switch (_booking!.status) {
       case 'Pending':
-      /* ... same as before ... */
       if (widget.userRole == 'Handyman') { return Padding( padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), child: Row( children: [ Expanded( child: OutlinedButton( onPressed: _isProcessingAction ? null : _showDeclineDialog, style: outlinedButtonStyle.copyWith( foregroundColor: MaterialStateProperty.all(Colors.red), side: MaterialStateProperty.all(const BorderSide(color: Colors.red)),), child: const Text('Decline'),),), const SizedBox(width: 8), Expanded( child: ElevatedButton( onPressed: _isProcessingAction ? null : _acceptBooking, style: elevatedButtonStyle, child: _isProcessingAction ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Accept'),),),],),); } else { return Padding( padding: const EdgeInsets.all(16.0), child: Column( mainAxisSize: MainAxisSize.min, children: [ Container( padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration( color: Colors.orange.shade100, borderRadius: BorderRadius.circular(20),), child: Text('Waiting for Handyman Approval', style: TextStyle(color: Colors.orange.shade800, fontSize: 12)),), const SizedBox(height: 12), SizedBox( width: double.infinity, child: ElevatedButton( style: elevatedButtonStyle.copyWith( backgroundColor: MaterialStateProperty.all(Colors.red[700]), foregroundColor: MaterialStateProperty.all(Colors.white)), onPressed: _isProcessingAction ? null : _showCancelDialogByHomeowner, child: _isProcessingAction ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Cancel Booking'),),),],),); }
       case 'Accepted':
-      /* ... same as before ... */
       if (widget.userRole == 'Handyman') { return Padding( padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0), child: Row( children: [ Expanded( child: OutlinedButton( onPressed: _isProcessingAction ? null : _showCancelDialogByHandyman, style: outlinedButtonStyle.copyWith( foregroundColor: MaterialStateProperty.all(Colors.purple), side: MaterialStateProperty.all(const BorderSide(color: Colors.purple)),), child: const Text('Cancel'),),), const SizedBox(width: 8), Expanded( child: ElevatedButton( onPressed: _isProcessingAction ? null : _startDriving, style: elevatedButtonStyle, child: _isProcessingAction ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Start Driving'),),),],),); } else { return Padding( padding: const EdgeInsets.all(16.0), child: Column( mainAxisSize: MainAxisSize.min, children: [ Container( padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration( color: Colors.blue.shade100, borderRadius: BorderRadius.circular(20),), child: Text('Booking Accepted! Waiting for Handyman.', style: TextStyle(color: Colors.blue.shade800, fontSize: 12)),), const SizedBox(height: 12), SizedBox( width: double.infinity, child: ElevatedButton( style: elevatedButtonStyle.copyWith( backgroundColor: MaterialStateProperty.all(Colors.red[700]), foregroundColor: MaterialStateProperty.all(Colors.white)), onPressed: _isProcessingAction ? null : _showCancelDialogByHomeowner, child: _isProcessingAction ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Cancel Booking'),),),],),); }
       case 'En Route':
-      /* ... same as before ... */
       if (widget.userRole == 'Homeowner') { return Padding( padding: const EdgeInsets.all(16.0), child: SizedBox( width: double.infinity, child: ElevatedButton( style: elevatedButtonStyle.copyWith(backgroundColor: MaterialStateProperty.all(Colors.green[700])), onPressed: _isProcessingAction ? null : _showStartServiceConfirmation, child: _isProcessingAction ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Start Service'),),),); } else { return Container( padding: const EdgeInsets.all(16.0), width: double.infinity, child: Text('On the way! Waiting for Homeowner to start service.', textAlign: TextAlign.center, style: TextStyle(color: Colors.cyan[800], fontWeight: FontWeight.bold)),); }
       case 'Ongoing':
-      /* ... same as before ... */
-      if (widget.userRole == 'Homeowner') { return Padding( padding: const EdgeInsets.all(16.0), child: SizedBox( width: double.infinity, child: ElevatedButton( style: elevatedButtonStyle.copyWith(backgroundColor: MaterialStateProperty.all(Colors.teal)), onPressed: _isProcessingAction ? null : () { Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentPage(bookingId: _booking!.bookingId /* Pass necessary details */))); }, child: _isProcessingAction ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Pay Now'),),),); } else { return Container( padding: const EdgeInsets.all(16.0), width: double.infinity, child: Text('Service in progress. Waiting for payment.', textAlign: TextAlign.center, style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold)),); }
+      if (widget.userRole == 'Homeowner') { return Padding( padding: const EdgeInsets.all(16.0), child: SizedBox( width: double.infinity, child: ElevatedButton( style: elevatedButtonStyle.copyWith(backgroundColor: MaterialStateProperty.all(Colors.teal)), onPressed: _isProcessingAction ? null : () { Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentPage(bookingId: _booking!.bookingId))); }, child: _isProcessingAction ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Pay Now'),),),); } else { return Container( padding: const EdgeInsets.all(16.0), width: double.infinity, child: Text('Service in progress. Waiting for payment.', textAlign: TextAlign.center, style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold)),); }
       case 'Completed':
-        if (widget.userRole == 'Homeowner') {
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Conditionally show the "Rate Service" button
-                if (!_reviewExists)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      icon: const Icon(Icons.star_outline),
-                      label: const Text('Rate Service'),
-                      style: elevatedButtonStyle.copyWith(backgroundColor: MaterialStateProperty.all(Colors.amber[700])),
-                      onPressed: _isProcessingAction ? null : () async {
-                        // Navigate and wait for a potential result to refresh the page
-                        final result = await Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => RateServicesPage(
-                            bookingId: _booking!.bookingId,
-                            serviceId: _booking!.serviceId,
-                            handymanId: _booking!.handymanId,
-                          )),
-                        );
-                        // If review was submitted, result can be true to trigger a reload
-                        if (result == true) {
-                          _loadBookingDetails();
-                        }
+        // Both roles can see these buttons now
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Only Homeowner can rate, and only if review doesn't exist
+              if (widget.userRole == 'Homeowner' && !_reviewExists)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    icon: const Icon(Icons.star_outline),
+                    label: const Text('Rate Service'),
+                    style: elevatedButtonStyle.copyWith(backgroundColor: MaterialStateProperty.all(Colors.amber[700])),
+                    onPressed: _isProcessingAction ? null : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => RateServicesPage(
+                          bookingId: _booking!.bookingId,
+                          serviceId: _booking!.serviceId,
+                          handymanId: _booking!.handymanId,
+                        )),
+                      );
+                    },
+                  ),
+                ),
+              // Show this message to homeowner if they have already reviewed
+              if (widget.userRole == 'Homeowner' && _reviewExists)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Text(
+                    'You have already reviewed this service.',
+                    style: TextStyle(color: Colors.green[800], fontStyle: FontStyle.italic),
+                  ),
+                ),
+              // Spacer for Homeowner view
+              if (widget.userRole == 'Homeowner') const SizedBox(height: 12),
+              
+              // Report and Receipt buttons visible to BOTH roles
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.flag_outlined, size: 18),
+                      label: const Text('Report Issue'),
+                      style: outlinedButtonStyle,
+                      onPressed: () {
+                        Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => ReportIssuePage(
+      bookingId: widget.bookingId,
+      userRole: widget.userRole,
+    )),
+  );
                       },
                     ),
                   ),
-                if (!_reviewExists) const SizedBox(height: 12),
-                // Additional action buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.flag_outlined, size: 18),
-                        label: const Text('Report Issue'),
-                        style: outlinedButtonStyle,
-                        onPressed: () {
-                          // TODO: Implement Report Issue functionality
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Report Issue feature coming soon!')));
-                        },
-                      ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.print_outlined, size: 18),
+                      label: const Text('Print Receipt'),
+                      style: outlinedButtonStyle,
+                      onPressed: () {
+                        Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => ReceiptPage(
+      bookingId: widget.bookingId,
+    )),
+  );
+                      },
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.print_outlined, size: 18),
-                        label: const Text('Print Receipt'),
-                        style: outlinedButtonStyle,
-                        onPressed: () {
-                          // TODO: Implement Print Receipt functionality
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Print Receipt feature coming soon!')));
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        } else {
-          // Handyman view for completed booking
-          return Container(
-            padding: const EdgeInsets.all(16.0),
-            width: double.infinity,
-            child: Text('Booking Completed', textAlign: TextAlign.center, style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold)),
-          );
-        }
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
       default:
         return null;
     }
