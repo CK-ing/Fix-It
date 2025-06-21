@@ -102,6 +102,27 @@ class _BookServicePageState extends State<BookServicePage> {
     super.dispose();
   }
 
+  // Helper function to create a notification
+  Future<void> _createNotification({
+    required String userId,
+    required String title,
+    required String body,
+    required String type,
+    String? bookingId,
+  }) async {
+    final notificationsRef = _dbRef.child('notifications/$userId').push();
+    // Set notification data in Firebase
+    await notificationsRef.set({
+      'notificationId': notificationsRef.key,
+      'title': title,
+      'body': body,
+      'type': type,
+      'bookingId': bookingId,
+      'isRead': false, // Always set as unread initially
+      'createdAt': ServerValue.timestamp,
+    });
+  }
+
   // Helper to safely call setState only if the widget is still mounted
   void setStateIfMounted(VoidCallback fn) {
     if (mounted) {
@@ -400,9 +421,25 @@ class _BookServicePageState extends State<BookServicePage> {
         'status': "Pending", 'bookingDateTime': ServerValue.timestamp,
       };
       await newBookingRef.set(bookingData);
+      // Create Notification for Handyman 
+      final homeownerSnapshot = await _dbRef.child('users/${currentUser.uid}/name').get();
+      final homeownerName = homeownerSnapshot.value as String? ?? 'A new customer';
+      await _createNotification(
+        userId: handymanIdToBook,
+        title: 'New Booking Request!',
+        body: '$homeownerName has requested a booking for "${currentServiceData['name']}".',
+        bookingId: bookingId,
+        type: 'new_booking', // Use a new type for this notification
+      );
       if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Booking request submitted successfully!'), backgroundColor: Colors.green, duration: Duration(seconds: 3),),);
-          Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Booking request submitted successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        Navigator.of(context).pop();
       }
     } catch (e) {
       print("Error saving booking: $e");

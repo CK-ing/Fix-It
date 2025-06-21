@@ -201,6 +201,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'booking_declined': return Icons.cancel_outlined;
       
       // Handyman notifications
+      case 'new_booking': return Icons.bookmark_add_outlined;
       case 'booking_cancelled': return Icons.highlight_off_outlined;
       case 'booking_started': return Icons.play_circle_outline;
       case 'payment_received': return Icons.monetization_on_outlined;

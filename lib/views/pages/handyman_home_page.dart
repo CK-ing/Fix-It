@@ -172,8 +172,8 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
 
     final List<QuickStat> quickStatsData = [
       QuickStat(icon: Icons.pending_actions_outlined, label: 'Pending Bookings', value: _pendingBookingsCount.toString(), color: Colors.orange, navigateToPageNotifierIndex: 1),
-      QuickStat(icon: Icons.assignment_late_outlined, label: 'New Job Requests', value: '-', color: Colors.green),
-      QuickStat(icon: Icons.mark_chat_unread_outlined, label: 'Unread\n Messages', value: '-', color: Colors.blue, navigateToPageNotifierIndex: 2),
+      QuickStat(icon: Icons.assignment_late_outlined, label: 'New Job Requests', value: '0', color: Colors.green),
+      QuickStat(icon: Icons.mark_chat_unread_outlined, label: 'Unread\n Messages', value: '0', color: Colors.blue, navigateToPageNotifierIndex: 2),
     ];
 
     return Scaffold(
