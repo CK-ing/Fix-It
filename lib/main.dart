@@ -1,60 +1,99 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:flutter/material.dart';
+import 'views/pages/splash_screen.dart';
 
-// *** ADD Import for Firebase Messaging ***
+// --- MODIFIED: Imports for Firebase Messaging and Local Notifications ---
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-// Import your initial screen and potentially Firebase options
 import 'views/pages/auth/welcome_screen.dart';
-// import 'firebase_options.dart'; // Uncomment if using firebase_options.dart
+
+// --- NEW: Background Message Handler ---
+// This function MUST be a top-level function (not inside a class).
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // If you're going to use other Firebase services in the background, like Firestore,
+  // make sure you call `initializeApp` before using them.
+  await Firebase.initializeApp();
+  print("Handling a background message: ${message.messageId}");
+}
+
+// --- NEW: Local Notifications Setup ---
+// Create a global instance of the plugin.
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase (ensure options are correctly configured if needed)
-  await Firebase.initializeApp(
-     // options: DefaultFirebaseOptions.currentPlatform, // Uncomment if using firebase_options.dart
+  await Firebase.initializeApp();
+
+  // --- NEW: Set the background messaging handler. ---
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // --- NEW: Initialize Local Notifications for foreground display ---
+  // Setup for Android
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher'); // Use the custom icon you added
+      
+  // Setup for iOS (requests permissions)
+  const DarwinInitializationSettings initializationSettingsIOS = DarwinInitializationSettings(
+    requestAlertPermission: true,
+    requestBadgePermission: true,
+    requestSoundPermission: true,
   );
+  
+  const InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+    iOS: initializationSettingsIOS,
+  );
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  // --- End of Local Notifications Initialization ---
 
-  // --- Add this block for Foreground Message Handling ---
+
+  // --- MODIFIED: Foreground Message Handling now shows a visible notification ---
   FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    print('Foreground FCM message received!'); // Log that a message came in
+    print('Foreground FCM message received!');
+    RemoteNotification? notification = message.notification;
+    AndroidNotification? android = message.notification?.android;
 
-    // Check if the message contains notification data
-    if (message.notification != null) {
-      print('Message also contained a notification:');
-      print('  Title: ${message.notification!.title}');
-      print('  Body: ${message.notification!.body}');
-
-      // --- How to display this to the user? ---
-      // For now, we just print. To show a visible notification banner
-      // while the app is open, you'd typically use a package like
-      // flutter_local_notifications here. We can implement that later if needed.
-    }
-
-    // Check if the message contains a data payload (optional)
-    if (message.data.isNotEmpty) {
-        print('Message data payload: ${message.data}');
-        // You can use this data to update UI, navigate, etc.
+    // If there's a notification, show it using flutter_local_notifications
+    if (notification != null) {
+      flutterLocalNotificationsPlugin.show(
+        notification.hashCode,
+        notification.title,
+        notification.body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'high_importance_channel', // A channel ID
+            'High Importance Notifications', // A channel name
+            channelDescription: 'This channel is used for important notifications.',
+            importance: Importance.max,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher', 
+          ),
+        ),
+      );
     }
   });
   // --- End of Foreground Message Handling Block ---
 
-  runApp(const MyApp()); // Start your app
+  runApp(const MyApp());
 }
 
+// Your existing MyApp widget remains UNCHANGED.
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() =>  _MyAppState();
+  State<MyApp> createState() => _MyAppState();
 }
 
-class  _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
-    // Your existing MyApp build method remains the same
+    // Your ValueListenableBuilder for dark mode is preserved perfectly.
     return ValueListenableBuilder(
       valueListenable: isDarkModeNotifier,
       builder: (context, isDarkMode, child) {
@@ -65,10 +104,9 @@ class  _MyAppState extends State<MyApp> {
               seedColor: Colors.blue,
               brightness: isDarkMode ? Brightness.dark : Brightness.light,
             ),
-             useMaterial3: true, // Recommended for modern Flutter UI
+            useMaterial3: true,
           ),
-          // Ensure WelcomeScreen or your AuthGate is the home
-          home: const WelcomeScreen(),
+          home: const SplashScreen(),
         );
       },
     );
