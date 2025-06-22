@@ -167,6 +167,7 @@ class _AddHandymanServicePageState extends State<AddHandymanServicePage> {
         district: _selectedDistrict, // *** NEW: Add selected district ***
         availability: 'Available',
         createdAt: DateTime.now(),
+        isActive: true,
       );
 
       await newServiceRef.set(newService.toMap());

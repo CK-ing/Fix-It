@@ -307,16 +307,17 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
         } catch (e) {
           return Center(child: Text("Error processing data: ${e.toString()}"));
         }
+        final activeServices = allFetchedServices.where((service) => service.isActive).toList();
 
         final searchQuery = _searchController.text.toLowerCase();
         final filteredServices = searchQuery.isEmpty
-            ? allFetchedServices
-            : allFetchedServices.where((s) => s.name.toLowerCase().contains(searchQuery)).toList();
+            ? activeServices
+            : activeServices.where((s) => s.name.toLowerCase().contains(searchQuery)).toList();
 
-        if (allFetchedServices.isNotEmpty && filteredServices.isEmpty) {
+        if (activeServices.isNotEmpty && filteredServices.isEmpty) {
           return const Center( child: Padding( padding: EdgeInsets.symmetric(vertical: 32.0), child: Text( 'No services found matching your search.', textAlign: TextAlign.center,),),);
         }
-        if (filteredServices.isEmpty) {
+        if (activeServices.isEmpty) {
           return const Center( child: Padding( padding: EdgeInsets.symmetric(vertical: 32.0), child: Text( 'You haven\'t listed any services yet.\nTap the + button to add one!', textAlign: TextAlign.center,),),);
         }
 

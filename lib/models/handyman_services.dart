@@ -13,6 +13,7 @@ class HandymanService {
   final String? district; // *** NEW: Added district field (nullable) ***
   final String availability; // e.g., 'Available', 'Unavailable'
   final DateTime createdAt;
+  final bool isActive;
 
   HandymanService({
     required this.id,
@@ -27,6 +28,7 @@ class HandymanService {
     this.district, // *** NEW: Added to constructor (optional) ***
     required this.availability,
     required this.createdAt,
+    required this.isActive,
   });
 
   factory HandymanService.fromMap(Map<String, dynamic> data, String id) {
@@ -46,6 +48,7 @@ class HandymanService {
       createdAt: data['createdAt'] != null && data['createdAt'].toString().isNotEmpty
           ? DateTime.tryParse(data['createdAt'].toString()) ?? DateTime.now()
           : DateTime.now(),
+      isActive: data['isActive'] as bool? ?? true,
     );
   }
 
@@ -62,6 +65,7 @@ class HandymanService {
       'district': district, // *** NEW: Add district to map (will be null if not set) ***
       'availability': availability,
       'createdAt': createdAt.toIso8601String(),
+      'isActive': isActive,
     };
   }
 }

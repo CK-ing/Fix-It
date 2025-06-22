@@ -4,11 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
-
 import '../../models/handyman_services.dart';
 import 'service_detail_page.dart';
-// TODO: Create this new page
-import 'notifications_page.dart';
 
 // Helper class to hold calculated rating information.
 class RatingInfo {
@@ -36,7 +33,6 @@ class _HomeownerHomePageState extends State<HomeownerHomePage> {
   bool _isLoadingData = true;
 
   // --- NEW: Notification State ---
-  bool _hasUnreadNotifications = false;
   StreamSubscription? _notificationsSubscription;
 
   // Other state variables...
@@ -110,7 +106,6 @@ class _HomeownerHomePageState extends State<HomeownerHomePage> {
         );
       }
       setStateIfMounted(() {
-        _hasUnreadNotifications = hasUnread;
       });
     }, onError: (error) {
       print("Error listening for notifications: $error");
@@ -118,7 +113,7 @@ class _HomeownerHomePageState extends State<HomeownerHomePage> {
   }
 
   void _startOfferAutoScroll() { /* ... remains same ... */ _offerScrollTimer?.cancel(); _offerScrollTimer = Timer.periodic(const Duration(seconds: 3), (timer) { if (!mounted || !_offerPageController.hasClients) { return; } _currentOfferPage++; if (_currentOfferPage >= _offerImages.length) { _currentOfferPage = 0; _offerPageController.jumpToPage(_currentOfferPage); return; } _offerPageController.animateToPage( _currentOfferPage, duration: const Duration(milliseconds: 500), curve: Curves.easeOut, ); }); }
-  Future<void> _loadHomepageData() async { /* ... remains same ... */ if (!mounted) return; setStateIfMounted(() { _isLoadingData = true; }); try { final results = await Future.wait([ _database.child('services').get(), _database.child('reviews').get(), ]); if (!mounted) return; final serviceSnapshot = results[0]; final reviewSnapshot = results[1]; List<HandymanService> services = []; if (serviceSnapshot.exists && serviceSnapshot.value != null) { final data = Map<String, dynamic>.from(serviceSnapshot.value as Map); services = data.entries.map((entry) { final value = Map<String, dynamic>.from(entry.value as Map); return HandymanService.fromMap(value, entry.key); }).toList(); services.sort((a, b) => b.createdAt.compareTo(a.createdAt)); } Map<String, RatingInfo> ratings = {}; if (reviewSnapshot.exists && reviewSnapshot.value != null) { final data = Map<String, dynamic>.from(reviewSnapshot.value as Map); Map<String, List<int>> tempRatings = {}; data.forEach((reviewId, reviewData) { final reviewMap = Map<String, dynamic>.from(reviewData as Map); final serviceId = reviewMap['serviceId'] as String?; final rating = reviewMap['rating'] as int?; if (serviceId != null && rating != null) { if (!tempRatings.containsKey(serviceId)) { tempRatings[serviceId] = []; } tempRatings[serviceId]!.add(rating); } }); tempRatings.forEach((serviceId, ratingList) { final int ratingCount = ratingList.length; final double averageRating = ratingList.reduce((a, b) => a + b) / ratingCount; ratings[serviceId] = RatingInfo(averageRating: averageRating, ratingCount: ratingCount); }); } setStateIfMounted(() { _allServices = services; _ratingsMap = ratings; _filterServices(applySearchQuery: false); _isLoadingData = false; }); } catch (e) { print("Error loading homepage data: $e"); if (mounted) { setStateIfMounted(() { _isLoadingData = false; }); ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('Error loading data: ${e.toString()}'), backgroundColor: Colors.red),); } } }
+  Future<void> _loadHomepageData() async { /* ... remains same ... */ if (!mounted) return; setStateIfMounted(() { _isLoadingData = true; }); try { final results = await Future.wait([ _database.child('services').get(), _database.child('reviews').get(), ]); if (!mounted) return; final serviceSnapshot = results[0]; final reviewSnapshot = results[1]; List<HandymanService> services = []; if (serviceSnapshot.exists && serviceSnapshot.value != null) { final data = Map<String, dynamic>.from(serviceSnapshot.value as Map); services = data.entries.map((entry) { final value = Map<String, dynamic>.from(entry.value as Map); return HandymanService.fromMap(value, entry.key); }).toList(); services = services.where((service) => service.isActive).toList(); services.sort((a, b) => b.createdAt.compareTo(a.createdAt)); } Map<String, RatingInfo> ratings = {}; if (reviewSnapshot.exists && reviewSnapshot.value != null) { final data = Map<String, dynamic>.from(reviewSnapshot.value as Map); Map<String, List<int>> tempRatings = {}; data.forEach((reviewId, reviewData) { final reviewMap = Map<String, dynamic>.from(reviewData as Map); final serviceId = reviewMap['serviceId'] as String?; final rating = reviewMap['rating'] as int?; if (serviceId != null && rating != null) { if (!tempRatings.containsKey(serviceId)) { tempRatings[serviceId] = []; } tempRatings[serviceId]!.add(rating); } }); tempRatings.forEach((serviceId, ratingList) { final int ratingCount = ratingList.length; final double averageRating = ratingList.reduce((a, b) => a + b) / ratingCount; ratings[serviceId] = RatingInfo(averageRating: averageRating, ratingCount: ratingCount); }); } setStateIfMounted(() { _allServices = services; _ratingsMap = ratings; _filterServices(applySearchQuery: false); _isLoadingData = false; }); } catch (e) { print("Error loading homepage data: $e"); if (mounted) { setStateIfMounted(() { _isLoadingData = false; }); ScaffoldMessenger.of(context).showSnackBar( SnackBar(content: Text('Error loading data: ${e.toString()}'), backgroundColor: Colors.red),); } } }
   Future<void> _fetchUserData() async { /* ... remains same ... */ final user = _auth.currentUser; if (user != null) { try { final snapshot = await _database.child('users').child(user.uid).child('name').get(); if (snapshot.exists && snapshot.value != null && mounted) { setStateIfMounted(() { _userName = snapshot.value.toString(); }); } } catch (e) { print("Error fetching user name: $e"); } } }
   void _onSearchChanged() { if (_searchQuery != _searchController.text.toLowerCase()) { _searchQuery = _searchController.text.toLowerCase(); _filterServices(); } }
   void _filterServices({bool applySearchQuery = true}) { /* ... remains same ... */ if (!mounted) return; List<HandymanService> tempServices = List.from(_allServices); if (_selectedCategoryFilter != null && _selectedCategoryFilter != 'All' && _selectedCategoryFilter != 'More') { tempServices = tempServices.where((s) => s.category == _selectedCategoryFilter).toList(); } if (_filterByCurrentLocationActive) { if (_currentLocationDistrict != null && _currentLocationDistrict!.isNotEmpty) { tempServices = tempServices.where((s) => s.district != null && s.district == _currentLocationDistrict && s.state != null && s.state == _currentLocationState ).toList(); } else if (_currentLocationState != null && _currentLocationState!.isNotEmpty) { tempServices = tempServices.where((s) => s.state == _currentLocationState).toList(); } } if (applySearchQuery && _searchQuery.isNotEmpty) { tempServices = tempServices.where((s) => s.name.toLowerCase().contains(_searchQuery)).toList(); } setState(() { _filteredServices = tempServices; }); }

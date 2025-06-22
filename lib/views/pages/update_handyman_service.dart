@@ -286,21 +286,27 @@ class _UpdateHandymanServicePageState extends State<UpdateHandymanServicePage> {
     }
   }
 
-  Future<void> _showDeleteConfirmationDialog() async { /* ... remains same ... */
+  Future<void> _showDeleteConfirmationDialog() async { 
     if (_isDeleting || !mounted) return;
     final bool? confirmDelete = await showDialog<bool>( context: context, builder: (BuildContext context) { return AlertDialog( title: const Text('Confirm Deletion'), content: const Text('Are you sure you want to delete this service? This action cannot be undone.'), actions: <Widget>[ TextButton( child: const Text('Cancel'), onPressed: () => Navigator.of(context).pop(false),), TextButton( style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Delete'), onPressed: () => Navigator.of(context).pop(true),),],);},);
-    if (confirmDelete == true) _deleteService();
+    if (confirmDelete == true) _deactivateService();;
   }
-  Future<void> _deleteService() async { /* ... remains same ... */
-    if (!mounted) return; setState(() { _isDeleting = true; });
+  Future<void> _deactivateService() async { 
+    if (!mounted) return; 
+    setState(() { _isDeleting = true; });
     try {
-      await _database.child('services').child(widget.serviceId).remove();
-      if (_initialImageUrl != null && _initialImageUrl!.isNotEmpty) {
-        try { await _storage.refFromURL(_initialImageUrl!).delete(); print("Service image deleted from storage."); }
-        catch (storageError) { print("Error deleting service image from storage: $storageError"); if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Service data deleted, but failed to delete image from storage.'), backgroundColor: Colors.orange),); }
-      }
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Service deleted successfully.'), backgroundColor: Colors.green),); Navigator.of(context).pop(); }
-    } catch (error) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete service: $error'), backgroundColor: Colors.red),); print("Error deleting service: $error"); }
+      await _database.child('services').child(widget.serviceId).update({
+        'isActive': false,
+        'updatedAt': DateTime.now().toIso8601String(),
+      }); //we dont actually delete from database because we need for historical data
+      if (mounted) { 
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Service deleted successfully.'), backgroundColor: Colors.green),
+          ); 
+          Navigator.of(context).pop(); 
+        }
+    } catch (error) { 
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to delete service: $error'), backgroundColor: Colors.red),); print("Error deleting service: $error"); }
     finally { if (mounted) setState(() { _isDeleting = false; });}
   }
 
