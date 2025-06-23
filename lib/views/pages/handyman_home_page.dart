@@ -4,18 +4,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 import '../../models/handyman_services.dart';
-import '../../models/bookings_services.dart';
+import '../../models/reviews.dart';
 import 'add_handyman_service.dart';
 import 'update_handyman_service.dart';
 import '../../data/notifiers.dart';
-
-// Helper class to hold calculated rating information.
-class RatingInfo {
-  final double averageRating;
-  final int ratingCount;
-
-  RatingInfo({this.averageRating = 0.0, this.ratingCount = 0});
-}
 
 class QuickStat {
   final IconData icon;

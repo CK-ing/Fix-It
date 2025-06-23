@@ -2,14 +2,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:flutter/material.dart';
 import 'views/pages/splash_screen.dart';
-
-// --- MODIFIED: Imports for Firebase Messaging and Local Notifications ---
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-
-import 'views/pages/auth/welcome_screen.dart';
-
-// --- NEW: Background Message Handler ---
 // This function MUST be a top-level function (not inside a class).
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
