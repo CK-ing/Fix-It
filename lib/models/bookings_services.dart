@@ -22,6 +22,7 @@ class Booking {
   // *** ADDED Fields ***
   final String? cancellationReason; // For homeowner cancellation
   final String? declineReason;      // For handyman decline
+  final String? customRequestId;
 
   Booking({
     required this.bookingId,
@@ -44,6 +45,7 @@ class Booking {
     // *** ADDED Fields ***
     this.cancellationReason,
     this.declineReason,
+    this.customRequestId,
   });
 
   // Factory constructor remains largely the same, just adds parsing for new fields
@@ -78,6 +80,7 @@ class Booking {
       // *** Parse new fields (will be null if not present) ***
       cancellationReason: data['cancellationReason'],
       declineReason: data['declineReason'],
+      customRequestId: data['customRequestId'],
     );
   }
 

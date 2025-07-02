@@ -11,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/reviews.dart';
+import 'custom_request_page.dart';
 
 class HandymanDetailPage extends StatefulWidget {
   final String handymanId;
@@ -139,7 +140,7 @@ class _HandymanDetailPageState extends State<HandymanDetailPage> {
   Widget build(BuildContext context) {
     final handymanName = _handymanData?['name'] ?? 'Handyman Profile';
     
-    // *** MODIFIED: Replaced CustomScrollView with a standard Scaffold and SingleChildScrollView ***
+    
     return Scaffold(
       appBar: AppBar(
         title: Text(handymanName),
@@ -174,6 +175,7 @@ class _HandymanDetailPageState extends State<HandymanDetailPage> {
             _buildServicesSection(),
             const Divider(height: 32, indent: 16, endIndent: 16),
           ],
+          _buildCustomRequestSection(),
           _buildReportSection(),
           const SizedBox(height: 40), // Padding at the bottom
         ],
@@ -434,6 +436,29 @@ class _HandymanDetailPageState extends State<HandymanDetailPage> {
       ),
     );
   }
+
+  // --- ADD THIS ENTIRE NEW WIDGET ---
+  Widget _buildCustomRequestSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.design_services_outlined, color: Colors.grey),
+        title: Text("Request Custom Service from ${_handymanData?['name'] ?? 'this handyman'}"),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () {
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => CustomRequestPage(
+      handymanId: widget.handymanId,
+      handymanName: _handymanData?['name'] ?? 'Handyman',
+      handymanImageUrl: _handymanData?['profileImageUrl'],
+    )),
+  );
+},
+      ),
+    );
+  }
   
   Widget _buildReportSection() {
     return Padding(
@@ -450,7 +475,7 @@ class _HandymanDetailPageState extends State<HandymanDetailPage> {
         },
       ),
     );
-  }
+  } 
 
   String _formatRelativeTime(DateTime dateTime) {
     final now = DateTime.now();

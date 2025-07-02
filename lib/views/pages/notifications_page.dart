@@ -4,7 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
 
+import '../../models/custom_request.dart';
 import 'bookings_detail_page.dart';
+import 'custom_request_status_page.dart';
+import 'job_request_detail_page.dart';
+import 'job_requests_page.dart';
 
 
 // A simple class to model a notification
@@ -199,13 +203,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
       case 'booking_accepted': return Icons.check_circle_outline;
       case 'booking_enroute': return Icons.directions_car_outlined;
       case 'booking_declined': return Icons.cancel_outlined;
+      case 'custom_request_update': return Icons.request_quote_outlined;
       
       // Handyman notifications
+      case 'custom_request': return Icons.post_add_outlined;
       case 'new_booking': return Icons.bookmark_add_outlined;
       case 'booking_cancelled': return Icons.highlight_off_outlined;
       case 'booking_started': return Icons.play_circle_outline;
       case 'payment_received': return Icons.monetization_on_outlined;
       case 'new_review': return Icons.star_outline;
+      case 'custom_request_declined': return Icons.thumb_down_alt_outlined;
       
       // General
       case 'promotion': return Icons.local_offer_outlined;
@@ -265,18 +272,75 @@ class _NotificationsPageState extends State<NotificationsPage> {
             _formatTimestamp(notification.createdAt),
             style: const TextStyle(color: Colors.grey, fontSize: 12),
           ),
-          onTap: () {
-            // *** MODIFIED: Use the fetched user role for correct navigation ***
-            if (notification.bookingId != null && _currentUserRole != null) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => BookingDetailPage(
-                  bookingId: notification.bookingId!,
-                  userRole: _currentUserRole!, // Pass the correct user role
-                )),
-              );
-            }
-          },
+          onTap: () async {
+  // --- MODIFIED: Final, robust navigation logic for all notification types ---
+  final String? id = notification.bookingId; // Can be bookingId or requestId
+  if (id == null || _currentUserRole == null) return;
+
+  // For notifications that are purely informational and have no action, just return.
+  if (notification.type == 'custom_request_declined') {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This quote was declined by the customer.'))
+    );
+    return;
+  }
+
+  // Show a temporary loading indicator for checks that require a database call
+  showDialog(context: context, builder: (context) => const Center(child: CircularProgressIndicator()), barrierDismissible: false);
+
+  try {
+    switch (notification.type) {
+      // --- HANDYMAN ACTIONS ---
+      case 'new_booking':
+      case 'custom_request':
+        final node = notification.type == 'new_booking' ? 'bookings' : 'custom_requests';
+        final snapshot = await _dbRef.child('$node/$id/status').get();
+        Navigator.pop(context); // Dismiss loading dialog
+        
+        if (mounted && snapshot.value == 'Pending') {
+          if (node == 'bookings') {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => BookingDetailPage(bookingId: id, userRole: _currentUserRole!)));
+          } else {
+            // Refetch the view model data to ensure it's current before navigating
+            final requestSnapshot = await _dbRef.child('custom_requests/$id').get();
+            if (!requestSnapshot.exists) throw Exception("Request not found");
+            final request = CustomRequest.fromSnapshot(requestSnapshot);
+            final homeownerSnapshot = await _dbRef.child('users/${request.homeownerId}').get();
+            if (!homeownerSnapshot.exists) throw Exception("Homeowner not found");
+            final homeownerData = Map<String, dynamic>.from(homeownerSnapshot.value as Map);
+            final viewModel = CustomRequestViewModel(request: request, homeownerName: homeownerData['name'] ?? 'Customer', homeownerImageUrl: homeownerData['profileImageUrl']);
+            if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => JobRequestDetailPage(requestViewModel: viewModel)));
+          }
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This request has already been actioned.')));
+        }
+        break;
+      
+      // --- HOMEOWNER ACTIONS ---
+      case 'custom_request_update':
+        final snapshot = await _dbRef.child('custom_requests/$id/status').get();
+        Navigator.pop(context); // Dismiss loading dialog
+        if (mounted && snapshot.value == 'Quoted') {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => CustomRequestStatusPage(requestId: id)));
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This quote is no longer active.')));
+        }
+        break;
+
+      // Default navigation for all other types (e.g., accepted, enroute, etc.)
+      default:
+        Navigator.pop(context); // Dismiss loading dialog
+        Navigator.push(context, MaterialPageRoute(builder: (_) => BookingDetailPage(bookingId: id, userRole: _currentUserRole!)));
+        break;
+    }
+  } catch (e) {
+    print("Error during notification navigation: $e");
+    if(mounted) {
+      Navigator.pop(context); // Dismiss loading dialog on error
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not open the item.")));
+    }
+  }
+},
         );
       },
     );

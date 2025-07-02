@@ -6,6 +6,7 @@ import 'package:firebase_database/firebase_database.dart';
 import '../../models/handyman_services.dart';
 import '../../models/reviews.dart';
 import 'add_handyman_service.dart';
+import 'job_requests_page.dart';
 import 'update_handyman_service.dart';
 import '../../data/notifiers.dart';
 
@@ -51,6 +52,7 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
   // Stream Subscriptions
   StreamSubscription? _pendingBookingsSubscription;
   StreamSubscription? _servicesAndRatingsSubscription;
+  StreamSubscription? _jobRequestsSubscription;
 
   @override
   void initState() {
@@ -59,7 +61,6 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
     _searchController.addListener(_onSearchChanged);
     if (_currentUser != null) {
       _listenToQuickStats();
-      // Listen to services and ratings together
       _listenToServicesAndRatings();
     }
   }
@@ -143,6 +144,32 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
       print("Error listening to pending bookings: $error");
       setStateIfMounted(() { _pendingBookingsCount = 0; });
     });
+  
+  final pendingJobsQuery = _database.child('custom_requests').orderByChild('handymanId').equalTo(handymanId);
+    _jobRequestsSubscription?.cancel();
+    _jobRequestsSubscription = pendingJobsQuery.onValue.listen((event) {
+      int count = 0;
+      if (event.snapshot.exists && event.snapshot.value != null) {
+        try {
+          final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+          data.forEach((key, value) {
+            // Count requests that are still pending for the handyman to quote
+            if (value is Map && value['status'] == 'Pending') {
+              count++;
+            }
+          });
+        } catch (e) {
+          print("Error processing job requests snapshot: $e");
+          count = 0;
+        }
+      }
+      setStateIfMounted(() {
+        _newJobRequestsCount = count;
+      });
+    }, onError: (error) {
+      print("Error listening to job requests: $error");
+      setStateIfMounted(() { _newJobRequestsCount = 0; });
+    });
   }
 
   void _onSearchChanged() {
@@ -163,10 +190,18 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
     final String? handymanId = _currentUser?.uid;
 
     final List<QuickStat> quickStatsData = [
-      QuickStat(icon: Icons.pending_actions_outlined, label: 'Pending Bookings', value: _pendingBookingsCount.toString(), color: Colors.orange, navigateToPageNotifierIndex: 1),
-      QuickStat(icon: Icons.assignment_late_outlined, label: 'New Job Requests', value: '0', color: Colors.green),
-      QuickStat(icon: Icons.mark_chat_unread_outlined, label: 'Unread\n Messages', value: '0', color: Colors.blue, navigateToPageNotifierIndex: 2),
-    ];
+    QuickStat(icon: Icons.pending_actions_outlined, label: 'Pending Bookings', value: _pendingBookingsCount.toString(), color: Colors.orange, navigateToPageNotifierIndex: 1),
+    QuickStat(
+      icon: Icons.assignment_late_outlined,
+      label: 'New Job Requests',
+      value: _newJobRequestsCount.toString(), // Use the real count
+      color: Colors.green,
+      // This stat card will now navigate directly using Navigator.push
+      // We set navigateToPageNotifierIndex to null to prevent the notifier from firing.
+      navigateToPageNotifierIndex: null,
+    ),
+    QuickStat(icon: Icons.mark_chat_unread_outlined, label: 'Unread\n Messages', value: '0', color: Colors.blue, navigateToPageNotifierIndex: 2),
+  ];
 
     return Scaffold(
       body: RefreshIndicator(
@@ -244,10 +279,18 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () {
-            if (stat.navigateToPageNotifierIndex != null) {
-              selectedPageNotifier.value = stat.navigateToPageNotifierIndex!;
-            }
-          },
+  // If it's the job requests card, navigate manually
+  if (stat.label == 'New Job Requests') {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const JobRequestsPage()),
+    );
+  } 
+  // Otherwise, use the existing notifier logic
+  else if (stat.navigateToPageNotifierIndex != null) {
+    selectedPageNotifier.value = stat.navigateToPageNotifierIndex!;
+  }
+},
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
             child: Column(

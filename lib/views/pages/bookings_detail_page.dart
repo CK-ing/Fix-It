@@ -170,7 +170,60 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
     }
   }
 
-  Future<void> _loadBookingDetails() async { try { final bookingSnapshot = await _dbRef.child('bookings').child(widget.bookingId).get(); if (!mounted || !bookingSnapshot.exists) throw Exception("Booking not found."); final tempBooking = Booking.fromSnapshot(bookingSnapshot); if (widget.userRole == 'Homeowner' && tempBooking.status == 'Completed') { _listenForReview(); } final otherPartyId = widget.userRole == 'Homeowner' ? tempBooking.handymanId : tempBooking.homeownerId; final results = await Future.wait([ if (tempBooking.serviceId.isNotEmpty) _dbRef.child('services').child(tempBooking.serviceId).get(), if (otherPartyId.isNotEmpty) _dbRef.child('users').child(otherPartyId).get(), ]); if (mounted) { Map<String, dynamic>? tempServiceDetails; Map<String, dynamic>? tempOtherPartyDetails; if (results.isNotEmpty && results[0] != null) { final serviceSnap = results[0] as DataSnapshot; if (serviceSnap.exists) { tempServiceDetails = Map<String, dynamic>.from(serviceSnap.value as Map); } } if (results.length > 1 && results[1] != null) { final userSnap = results[1] as DataSnapshot; if (userSnap.exists) { tempOtherPartyDetails = Map<String, dynamic>.from(userSnap.value as Map); } } setState(() { _booking = tempBooking; _serviceDetails = tempServiceDetails; _otherPartyDetails = tempOtherPartyDetails; _isLoading = false; _error = null; }); } } catch (e) { print("Error loading booking details: $e"); if (mounted) { setState(() { _isLoading = false; _error = "Failed to load details."; }); } } }
+  Future<void> _loadBookingDetails() async {
+    if (!mounted) return;
+    setState(() { _isLoading = true; _error = null; });
+
+    try {
+      final bookingSnapshot = await _dbRef.child('bookings').child(widget.bookingId).get();
+      if (!mounted || !bookingSnapshot.exists) throw Exception("Booking not found.");
+
+      _booking = Booking.fromSnapshot(bookingSnapshot);
+      if (!mounted || _booking == null) return;
+
+      // Listen for review status if the booking is completed by a homeowner
+      if (widget.userRole == 'Homeowner' && _booking!.status == 'Completed') {
+        _listenForReview();
+      }
+
+      // --- MODIFIED: Fetch all related data concurrently ---
+      final results = await Future.wait([
+        // Fetch service details ONLY if it's a standard booking
+        if (_booking!.serviceId != null)
+          _dbRef.child('services').child(_booking!.serviceId!).get(),
+        // Always fetch homeowner details
+        _dbRef.child('users').child(_booking!.homeownerId).get(),
+        // Always fetch handyman details
+        _dbRef.child('users').child(_booking!.handymanId).get(),
+      ]);
+
+      if (!mounted) return;
+
+      int resultIndex = 0;
+      if (_booking!.serviceId != null) {
+        final serviceSnap = results[resultIndex++];
+        if (serviceSnap.exists) {
+          _serviceDetails = Map<String, dynamic>.from(serviceSnap.value as Map);
+        }
+      }
+      
+      final homeownerSnap = results[resultIndex++];
+      final handymanSnap = results[resultIndex++];
+
+      setState(() {
+        _otherPartyDetails = widget.userRole == 'Homeowner'
+            ? (handymanSnap.exists ? Map<String, dynamic>.from(handymanSnap.value as Map) : null)
+            : (homeownerSnap.exists ? Map<String, dynamic>.from(homeownerSnap.value as Map) : null);
+        _isLoading = false;
+      });
+
+    } catch (e) {
+      print("Error loading booking details: $e");
+      if (mounted) setState(() { _isLoading = false; _error = "Failed to load details."; });
+    }
+  }
+
+
   void _listenForReview() { _reviewStreamSubscription?.cancel(); final query = _dbRef.child('reviews').orderByChild('bookingId').equalTo(widget.bookingId); _reviewStreamSubscription = query.onValue.listen((event) { if (mounted) { setStateIfMounted(() { _reviewExists = event.snapshot.exists; }); print("Real-time review check updated. Review exists: ${event.snapshot.exists}"); } }, onError: (error) { print("Error in review stream subscription: $error"); if (mounted) { setStateIfMounted(() { _reviewExists = false; }); } }); }
   Future<void> _makePhoneCall(String? phoneNumber) async { if (phoneNumber == null || phoneNumber.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone number not available.'))); return; } final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber); try { if (await canLaunchUrl(launchUri)) { await launchUrl(launchUri); } else { throw 'Could not launch $launchUri'; } } catch(e) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not launch phone dialer: $e'))); print('Could not launch $launchUri: $e'); } }
   Future<void> _acceptBooking() async { await _updateBookingStatus('Accepted'); }
@@ -229,15 +282,24 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
                     label: const Text('Rate Service'),
                     style: elevatedButtonStyle.copyWith(backgroundColor: MaterialStateProperty.all(Colors.amber[700])),
                     onPressed: _isProcessingAction ? null : () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => RateServicesPage(
-                          bookingId: _booking!.bookingId,
-                          serviceId: _booking!.serviceId,
-                          handymanId: _booking!.handymanId,
-                        )),
-                      );
-                    },
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => RateServicesPage(
+      bookingId: _booking!.bookingId,
+      handymanId: _booking!.handymanId,
+      // Pass the serviceName directly from the booking record.
+      // This works for both standard and custom jobs.
+      serviceName: _booking!.serviceName,
+      // Pass the serviceId if it exists. It will be null for custom jobs.
+      serviceId: _booking!.serviceId,
+    )),
+  ).then((value) {
+    // This ensures the page refreshes if a review was submitted.
+    if (value == true && mounted) {
+      _loadBookingDetails();
+    }
+  });
+},
                   ),
                 ),
               if (widget.userRole == 'Homeowner' && _reviewExists)

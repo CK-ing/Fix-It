@@ -9,13 +9,15 @@ import 'package:uuid/uuid.dart'; // For generating unique filenames for photos
 
 class RateServicesPage extends StatefulWidget {
   final String bookingId;
-  final String serviceId;
+  final String? serviceId; // Make serviceId optional
   final String handymanId;
+  final String serviceName; // Add serviceName
 
   const RateServicesPage({
     required this.bookingId,
-    required this.serviceId,
+    this.serviceId,
     required this.handymanId,
+    required this.serviceName, // Make it required
     super.key,
   });
 
@@ -60,9 +62,19 @@ class _RateServicesPageState extends State<RateServicesPage> {
     }
   }
 
+  // NEW CODE
   Future<void> _loadServiceDetails() async {
+    // If there is no serviceId (i.e., it's a custom job), we don't need to fetch anything.
+    if (widget.serviceId == null || widget.serviceId!.isEmpty) {
+      setState(() {
+        _isLoadingService = false;
+        _serviceData = null; // Ensure serviceData is null
+      });
+      return;
+    }
+
     try {
-      final snapshot = await _dbRef.child('services').child(widget.serviceId).get();
+      final snapshot = await _dbRef.child('services').child(widget.serviceId!).get();
       if (mounted) {
         if (snapshot.exists) {
           setState(() {
@@ -70,7 +82,11 @@ class _RateServicesPageState extends State<RateServicesPage> {
             _isLoadingService = false;
           });
         } else {
-          throw Exception("Service not found.");
+          // If service is not found (e.g., deleted), just proceed without image data
+          setState(() {
+            _isLoadingService = false;
+            _serviceData = null;
+          });
         }
       }
     } catch (e) {
@@ -175,8 +191,7 @@ class _RateServicesPageState extends State<RateServicesPage> {
       // Create Notification for Handyman
       final homeownerSnapshot = await _dbRef.child('users/${currentUser.uid}/name').get();
       final homeownerName = homeownerSnapshot.value as String? ?? 'A customer';
-
-      final serviceName = _serviceData?['name'] ?? 'your service';
+      final serviceName = widget.serviceName;
       await _dbRef.child('notifications/${widget.handymanId}').push().set({
         'title': 'You have a new review!',
         'body': '$homeownerName left a $_rating-star review for "$serviceName".',
@@ -221,7 +236,7 @@ class _RateServicesPageState extends State<RateServicesPage> {
 
   Widget _buildReviewForm() {
     final serviceImageUrl = _serviceData?['imageUrl'] as String?;
-    final serviceName = _serviceData?['name'] ?? 'Service';
+    final serviceName = widget.serviceName;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 24.0),

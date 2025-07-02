@@ -10,14 +10,18 @@ import 'package:intl/intl.dart';
 // import '../../models/bookings_services.dart'; // If you create a model for Booking
 
 class BookServicePage extends StatefulWidget {
-  final String serviceId;
-  final String? handymanId; // Made handymanId explicitly nullable for clarity
+  // Make both IDs optional (nullable)
+  final String? serviceId;
+  final String? customRequestId;
+  final String handymanId;
 
   const BookServicePage({
-    required this.serviceId,
-    this.handymanId, // Can be null if serviceData provides it
+    this.serviceId,
+    this.customRequestId,
+    required this.handymanId, // Handyman ID is always required
     super.key,
-  });
+  }) : assert(serviceId != null || customRequestId != null, 
+             'Either serviceId or customRequestId must be provided');
 
   @override
   State<BookServicePage> createState() => _BookServicePageState();
@@ -34,7 +38,7 @@ class _BookServicePageState extends State<BookServicePage> {
   final TextEditingController _couponController = TextEditingController();
 
   // State Variables
-  Map<String, dynamic>? _serviceData; // Holds fetched service details
+  Map<String, dynamic>? _displayData;
   String? _userHomeAddress;
   int _quantity = 1; // Default quantity, adjustable for hourly services
 
@@ -130,33 +134,53 @@ class _BookServicePageState extends State<BookServicePage> {
     }
   }
 
-  // Fetch service details and user's home address
+  // NEW CODE
   Future<void> _loadInitialData() async {
     setStateIfMounted(() { _isLoading = true; _error = null; });
     final userId = _auth.currentUser?.uid;
+
     try {
-      final serviceSnapshot = await _dbRef.child('services').child(widget.serviceId).get();
-      if (!mounted) return;
-      if (serviceSnapshot.exists && serviceSnapshot.value != null) {
-        _serviceData = Map<String, dynamic>.from(serviceSnapshot.value as Map);
-        // Initialize quantity based on service type
-        if (_serviceData?['priceType'] == 'Fixed') {
-          _quantity = 1; // Fixed price services have a quantity of 1 hour implicitly
-        } else { // Hourly
-          // You could have a default quantity for hourly services or let it be 1
-          _quantity = 1; // Default to 1 hour for hourly, user can adjust
+      Map<String, dynamic> loadedData = {};
+
+      if (widget.serviceId != null) {
+        // --- Standard Service Flow ---
+        final serviceSnapshot = await _dbRef.child('services').child(widget.serviceId!).get();
+        if (!mounted || !serviceSnapshot.exists) throw Exception('Service details not found.');
+        loadedData = Map<String, dynamic>.from(serviceSnapshot.value as Map);
+        
+        if (loadedData['priceType'] == 'Fixed') {
+          _quantity = 1;
         }
-      } else {
-        throw Exception('Service details not found.');
+
+      } else if (widget.customRequestId != null) {
+        // --- Custom Request Flow ---
+        final requestSnapshot = await _dbRef.child('custom_requests').child(widget.customRequestId!).get();
+        if (!mounted || !requestSnapshot.exists) throw Exception('Custom request details not found.');
+        final requestData = Map<String, dynamic>.from(requestSnapshot.value as Map);
+
+        // Adapt the custom request data to match the structure our UI expects
+        loadedData = {
+          'name': requestData['description'], // Use description as the "name"
+          'imageUrl': (requestData['photoUrls'] as List?)?.isNotEmpty == true ? requestData['photoUrls'][0] : null,
+          'price': requestData['quotePrice'],
+          'priceType': requestData['quotePriceType'],
+          'handymanId': requestData['handymanId'],
+        };
+        // For custom requests, the quantity is always 1 unit of the quoted job
+        _quantity = 1;
       }
 
+      // Set the single state variable that the UI will use
+      _displayData = loadedData;
+
+      // This part remains the same, it fetches the user's saved address
       if (userId != null) {
-        final userSnapshot = await _dbRef.child('users').child(userId).child('address').get();
-        if (mounted && userSnapshot.exists && userSnapshot.value != null) {
+        final userSnapshot = await _dbRef.child('users/$userId/address').get();
+        if (mounted && userSnapshot.exists) {
           _userHomeAddress = userSnapshot.value.toString();
         }
       }
-      _calculatePriceDetails(); // Calculate price after loading service data
+      _calculatePriceDetails();
     } catch (e) {
       print("Error loading initial booking data: $e");
       if (mounted) _error = "Failed to load booking details.";
@@ -167,11 +191,11 @@ class _BookServicePageState extends State<BookServicePage> {
 
   // Calculate prices in sen (integers)
   void _calculatePriceDetails() {
-    if (_serviceData == null) return;
+    if (_displayData == null) return;
 
-    final double priceDouble = (_serviceData!['price'] as num?)?.toDouble() ?? 0.0;
+    final double priceDouble = (_displayData!['price'] as num?)?.toDouble() ?? 0.0;
     final int priceInSen = (priceDouble * 100).round();
-    final String priceType = _serviceData!['priceType'] ?? 'Fixed';
+    final String priceType = _displayData!['priceType'] ?? 'Fixed';
     
     // For hourly services, price depends on quantity. For fixed, it's a one-time price.
     final int calculationQuantity = (priceType == 'Hourly') ? _quantity : 1;
@@ -189,7 +213,7 @@ class _BookServicePageState extends State<BookServicePage> {
 
   // Increment quantity for hourly services
   void _incrementQuantity() {
-    if (_serviceData?['priceType'] == 'Hourly') {
+    if (_displayData?['priceType'] == 'Hourly') {
       setState(() {
         _quantity++;
         _calculatePriceDetails();
@@ -201,7 +225,7 @@ class _BookServicePageState extends State<BookServicePage> {
 
   // Decrement quantity for hourly services
   void _decrementQuantity() {
-    if (_serviceData?['priceType'] == 'Hourly' && _quantity > 1) {
+    if (_displayData?['priceType'] == 'Hourly' && _quantity > 1) {
       setState(() {
         _quantity--;
         _calculatePriceDetails();
@@ -249,7 +273,7 @@ class _BookServicePageState extends State<BookServicePage> {
     if (!mounted) return;
     setStateIfMounted(() { _isLoadingSlots = true; });
 
-    final String? handymanIdToQuery = widget.handymanId ?? _serviceData?['handymanId'];
+    final String? handymanIdToQuery = widget.handymanId ?? _displayData?['handymanId'];
     if (handymanIdToQuery == null) {
       print("Error: Handyman ID is not available for fetching slots.");
       if (mounted) {
@@ -332,7 +356,7 @@ class _BookServicePageState extends State<BookServicePage> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final String displayTotal = (_total / 100.0).toStringAsFixed(2);
-            int displayDuration = (_serviceData?['priceType'] == 'Hourly' ? _quantity : 1);
+            int displayDuration = (_displayData?['priceType'] == 'Hourly' ? _quantity : 1);
             if (displayDuration < 1) displayDuration = 1;
             DateTime endTime = finalDateTime.add(Duration(hours: displayDuration));
 
@@ -343,7 +367,7 @@ class _BookServicePageState extends State<BookServicePage> {
                   children: <Widget>[
                     const Text("Would you like to proceed to confirm this booking?"),
                     const SizedBox(height: 16),
-                    Text('Service: ${_serviceData?['name'] ?? 'N/A'}'),
+                    Text('Service: ${_displayData?['name'] ?? 'N/A'}'),
                     Text('Date: ${DateFormat('EEE, MMM d, yyyy').format(finalDateTime)}'),
                     Text('Time: ${DateFormat('hh:mm a').format(finalDateTime)} - ${DateFormat('hh:mm a').format(endTime)} ($displayDuration hour${displayDuration > 1 ? 's' : ''})'),
                     const SizedBox(height: 8),
@@ -376,15 +400,14 @@ class _BookServicePageState extends State<BookServicePage> {
     );
   }
 
-  // Final booking logic with integer prices and real-time slot check
+  // NEW CODE
   Future<void> _confirmBooking(DateTime finalScheduledDateTime) async {
     if (_isBooking) return;
     final currentUser = _auth.currentUser;
-    final currentServiceData = _serviceData;
+    final currentDisplayData = _displayData; // Use the generic display data
     final address = _addressController.text.trim();
-    final String? handymanIdToBook = widget.handymanId ?? currentServiceData?['handymanId'];
-
-    if (currentUser == null || currentServiceData == null || address.isEmpty || handymanIdToBook == null) {
+    
+    if (currentUser == null || currentDisplayData == null || address.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Missing required information to book.'), backgroundColor: Colors.red),);
       return;
     }
@@ -392,15 +415,15 @@ class _BookServicePageState extends State<BookServicePage> {
     setStateIfMounted(() { _isBooking = true; });
 
     try {
-      final int durationNeeded = (currentServiceData['priceType'] == 'Hourly') ? _quantity : 1;
-      final isSlotStillAvailable = await _checkSlotAvailabilityRealtime(handymanIdToBook, finalScheduledDateTime, durationNeeded, _slotBlockingStatuses);
+      final int durationNeeded = (currentDisplayData['priceType'] == 'Hourly') ? _quantity : 1;
+      final isSlotStillAvailable = await _checkSlotAvailabilityRealtime(widget.handymanId, finalScheduledDateTime, durationNeeded, _slotBlockingStatuses);
 
       if (!mounted) return; 
       if (!isSlotStillAvailable) {
-         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sorry, one or more selected time slots were just booked. Please select another.'), backgroundColor: Colors.orange, duration: Duration(seconds: 3),));
-         setStateIfMounted(() {
-            _isBooking = false;
-            if (_selectedDateOnly != null) _fetchBookedSlotsForDate(_selectedDateOnly!); 
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sorry, one or more selected time slots were just booked. Please select another.'), backgroundColor: Colors.orange, duration: Duration(seconds: 3),));
+        setStateIfMounted(() {
+          _isBooking = false;
+          if (_selectedDateOnly != null) _fetchBookedSlotsForDate(_selectedDateOnly!); 
         });
         return;
       }
@@ -410,36 +433,47 @@ class _BookServicePageState extends State<BookServicePage> {
       if (bookingId == null) throw Exception("Failed to generate booking ID.");
 
       final Map<String, dynamic> bookingData = {
-        'bookingId': bookingId, 'serviceId': widget.serviceId, 'serviceName': currentServiceData['name'] ?? 'N/A',
-        'handymanId': handymanIdToBook, 'homeownerId': currentUser.uid,
+        'bookingId': bookingId,
+        'serviceId': widget.serviceId, // Will be null for custom requests
+        'customRequestId': widget.customRequestId, // Will be null for standard services
+        'serviceName': currentDisplayData['name'] ?? 'N/A',
+        'handymanId': widget.handymanId,
+        'homeownerId': currentUser.uid,
         'scheduledDateTime': finalScheduledDateTime.toIso8601String(),
-        'address': address, 'description': _descriptionController.text.trim(),
+        'address': address,
+        'description': _descriptionController.text.trim(),
         'quantity': _quantity, 
-        'price': currentServiceData['price'] ?? 0.0, 'priceType': currentServiceData['priceType'] ?? 'Fixed',
+        'price': currentDisplayData['price'] ?? 0.0,
+        'priceType': currentDisplayData['priceType'] ?? 'Fixed',
         'subtotal': _subtotal, 'tax': _tax, 'total': _total,
-        'couponCode': _couponController.text.trim().isEmpty ? null : _couponController.text.trim(),
-        'status': "Pending", 'bookingDateTime': ServerValue.timestamp,
+        'status': "Pending",
+        'bookingDateTime': ServerValue.timestamp,
       };
-      await newBookingRef.set(bookingData);
-      // Create Notification for Handyman 
+      
+      // Use an atomic update to create booking and update custom request status
+      Map<String, dynamic> atomicUpdate = {};
+      atomicUpdate['/bookings/$bookingId'] = bookingData;
+      if (widget.customRequestId != null) {
+        atomicUpdate['/custom_requests/${widget.customRequestId}/status'] = 'Booked';
+      }
+
+      await _dbRef.root.update(atomicUpdate);
+      
       final homeownerSnapshot = await _dbRef.child('users/${currentUser.uid}/name').get();
       final homeownerName = homeownerSnapshot.value as String? ?? 'A new customer';
       await _createNotification(
-        userId: handymanIdToBook,
+        userId: widget.handymanId,
         title: 'New Booking Request!',
-        body: '$homeownerName has requested a booking for "${currentServiceData['name']}".',
+        body: '$homeownerName has requested a booking for "${currentDisplayData['name']}".',
         bookingId: bookingId,
-        type: 'new_booking', // Use a new type for this notification
+        type: 'new_booking',
       );
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Booking request submitted successfully!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
-          ),
-        );
-        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Booking request submitted successfully!'), backgroundColor: Colors.green, duration: Duration(seconds: 3),),);
+        // Pop twice to exit both this page and the quote status page
+        int popCount = 0;
+        Navigator.of(context).popUntil((_) => popCount++ >= 2);
       }
     } catch (e) {
       print("Error saving booking: $e");
@@ -562,10 +596,10 @@ class _BookServicePageState extends State<BookServicePage> {
   }
 
   Widget _buildQuantitySection() {
-    final priceType = _serviceData?['priceType'] ?? 'Fixed';
+    final priceType = _displayData?['priceType'] ?? 'Fixed';
     final isHourly = priceType == 'Hourly';
-    final serviceName = _serviceData?['name'] ?? 'Service';
-    final imageUrl = _serviceData?['imageUrl'] as String?;
+    final serviceName = _displayData?['name'] ?? 'Service';
+    final imageUrl = _displayData?['imageUrl'] as String?;
     return Card(
       elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: Padding(
@@ -641,7 +675,7 @@ class _BookServicePageState extends State<BookServicePage> {
     }
 
     int currentBookingDuration = 1;
-    if (_serviceData?['priceType'] == 'Hourly') {
+    if (_displayData?['priceType'] == 'Hourly') {
       currentBookingDuration = _quantity;
       if (currentBookingDuration < 1) currentBookingDuration = 1;
     }
