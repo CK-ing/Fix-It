@@ -6,14 +6,17 @@ import 'package:intl/intl.dart';
 import '../../models/bookings_services.dart';
 
 class ReportIssuePage extends StatefulWidget {
-  final String bookingId;
+  // *** MODIFIED: Make parameters optional to handle different report types ***
+  final String? bookingId;
+  final String? handymanId;
   final String userRole;
 
   const ReportIssuePage({
-    required this.bookingId,
+    this.bookingId,
+    this.handymanId,
     required this.userRole,
     super.key,
-  });
+  }) : assert(bookingId != null || handymanId != null, 'Either bookingId or handymanId must be provided');
 
   @override
   State<ReportIssuePage> createState() => _ReportIssuePageState();
@@ -26,6 +29,7 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
   // State variables
   Booking? _booking;
   Map<String, dynamic>? _serviceDetails;
+  Map<String, dynamic>? _handymanDetails; // For handyman reports
   bool _isLoading = true;
   bool _isSubmitting = false;
   String? _error;
@@ -33,30 +37,24 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
   String? _selectedIssueCategory;
   bool _consentChecked = false;
 
-  // --- Role-Specific Issue Categories ---
-  final List<String> _homeownerCategories = [
-    'Service Not as Described',
-    'Handyman No-Show',
-    'Property Damage',
-    'Pricing Dispute',
-    'Unprofessional Behavior',
-    'Safety Concern',
-    'Other',
+  // --- MODIFIED: Added categories for reporting a handyman profile ---
+  final List<String> _homeownerBookingCategories = [
+    'Service Not as Described', 'Handyman No-Show', 'Property Damage', 'Pricing Dispute', 'Unprofessional Behavior', 'Safety Concern', 'Other',
   ];
 
-  final List<String> _handymanCategories = [
-    'Payment Dispute',
-    'Customer No-Show or Unresponsive',
-    'Unsafe Work Environment',
-    'Scope of Work Changed',
-    'Unreasonable Customer Demands',
-    'Other',
+  final List<String> _handymanBookingCategories = [
+    'Payment Dispute', 'Customer No-Show or Unresponsive', 'Unsafe Work Environment', 'Scope of Work Changed', 'Unreasonable Customer Demands', 'Other',
+  ];
+  
+  final List<String> _reportHandymanCategories = [
+    'Misleading Profile Information', 'Inappropriate Profile Photo', 'Fake Reviews or Ratings', 'Unresponsive to Enquiries', 'Spam or Scam Behavior', 'Other',
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadBookingSummary();
+    // *** MODIFIED: Load data based on which ID is provided ***
+    _loadContextData();
   }
   
   @override
@@ -65,21 +63,25 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
     super.dispose();
   }
 
+  // --- NEW: Main data loading function that decides what to fetch ---
+  Future<void> _loadContextData() async {
+    if (widget.bookingId != null) {
+      // It's a report about a specific booking
+      await _loadBookingSummary();
+    } else if (widget.handymanId != null) {
+      // It's a report about a handyman's profile
+      await _loadHandymanSummary();
+    }
+  }
+
   Future<void> _loadBookingSummary() async {
     try {
-      final bookingSnapshot = await FirebaseDatabase.instance
-          .ref('bookings')
-          .child(widget.bookingId)
-          .get();
-      
+      final bookingSnapshot = await FirebaseDatabase.instance.ref('bookings').child(widget.bookingId!).get();
       if (!mounted) return;
 
       if (bookingSnapshot.exists) {
         final bookingData = Booking.fromSnapshot(bookingSnapshot);
-        final serviceSnapshot = await FirebaseDatabase.instance
-            .ref('services')
-            .child(bookingData.serviceId)
-            .get();
+        final serviceSnapshot = await FirebaseDatabase.instance.ref('services').child(bookingData.serviceId).get();
 
         if (mounted) {
            setState(() {
@@ -102,27 +104,41 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
       }
     }
   }
+  
+  // --- NEW: Function to load handyman profile for reporting ---
+  Future<void> _loadHandymanSummary() async {
+    try {
+      final handymanSnapshot = await FirebaseDatabase.instance.ref('users').child(widget.handymanId!).get();
+      if (!mounted) return;
+      
+      if (handymanSnapshot.exists) {
+        setState(() {
+          _handymanDetails = Map<String, dynamic>.from(handymanSnapshot.value as Map);
+          _isLoading = false;
+        });
+      } else {
+         throw Exception("Handyman profile not found");
+      }
+    } catch (e) {
+      if(mounted) {
+        setState(() {
+          _isLoading = false;
+          _error = "Failed to load handyman details.";
+        });
+      }
+    }
+  }
 
   void _submitReport() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
+    if (!_formKey.currentState!.validate()) { return; }
     if (!_consentChecked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You must acknowledge the terms to proceed.'), backgroundColor: Colors.orange),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('You must acknowledge the terms to proceed.'), backgroundColor: Colors.orange));
       return;
     }
-    
     setState(() => _isSubmitting = true);
 
-    // --- SIMULATION ---
     // In a real app, you would save this to a '/reports' node in Firebase.
-    // For now, we simulate a network call.
     await Future.delayed(const Duration(seconds: 2));
-    
-    // --- END SIMULATION ---
     
     setState(() => _isSubmitting = false);
     
@@ -161,14 +177,26 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
   }
   
   Widget _buildReportForm() {
-    final categories = widget.userRole == 'Homeowner' ? _homeownerCategories : _handymanCategories;
+    // *** MODIFIED: Choose the correct category list based on context ***
+    List<String> categories;
+    if (widget.bookingId != null && widget.bookingId!.startsWith('profile_report_')) {
+      categories = _reportHandymanCategories;
+    } else if (widget.userRole == 'Homeowner') {
+      categories = _homeownerBookingCategories;
+    } else {
+      categories = _handymanBookingCategories;
+    }
 
     return Form(
       key: _formKey,
       child: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          _buildBookingSummaryCard(),
+          // *** MODIFIED: Conditionally show the correct summary card ***
+          if (widget.bookingId != null && !_booking!.bookingId.startsWith('profile_report_'))
+            _buildBookingSummaryCard()
+          else
+            _buildHandymanSummaryCard(),
           const SizedBox(height: 24),
           Text(
             'Tell us what happened',
@@ -225,6 +253,49 @@ class _ReportIssuePageState extends State<ReportIssuePage> {
                   const SizedBox(height: 4),
                    Text(
                     'Completed: ${DateFormat.yMMMd().format(_booking!.scheduledDateTime)}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // --- NEW: Summary card for reporting a handyman profile ---
+  Widget _buildHandymanSummaryCard() {
+    final imageUrl = _handymanDetails?['profileImageUrl'] as String?;
+    final name = _handymanDetails?['name'] ?? 'Handyman';
+
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.grey.shade300)
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 35,
+              backgroundColor: Colors.grey[200],
+              backgroundImage: imageUrl != null ? NetworkImage(imageUrl) : null,
+              child: imageUrl == null ? const Icon(Icons.person, color: Colors.grey, size: 35) : null,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Reporting Handyman", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'ID: ${widget.handymanId}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
                   ),
                 ],
