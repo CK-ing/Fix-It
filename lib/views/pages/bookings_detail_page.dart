@@ -10,6 +10,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'handyman_detail_page.dart';
+
 class BookingDetailPage extends StatefulWidget {
   final String bookingId;
   final String userRole; // 'Homeowner' or 'Handyman'
@@ -288,7 +290,99 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   Widget _buildReasonSection() { String reasonLabel = ''; String? reasonText; Color reasonColor = Colors.grey.shade700; if (_booking!.status == 'Declined') { reasonLabel = 'Reason for Decline'; reasonText = _booking!.declineReason; reasonColor = Colors.red.shade800; } else if (_booking!.status == 'Cancelled' || _booking!.status == 'Cancelled_Handyman') { reasonLabel = 'Reason for Cancellation'; reasonText = _booking!.cancellationReason; reasonColor = Colors.grey.shade800; } if (reasonText == null || reasonText.isEmpty) { if (_booking!.status == 'Declined' || _booking!.status.startsWith('Cancelled')) { return Padding( padding: const EdgeInsets.only(top: 10.0, bottom: 4.0), child: _buildInfoRow(Icons.info_outline, 'No reason provided.', iconColor: reasonColor),); } return const SizedBox.shrink(); } return Padding( padding: const EdgeInsets.only(top: 10.0, bottom: 4.0), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ Text(reasonLabel, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: reasonColor)), const SizedBox(height: 4), Text(reasonText, style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: Colors.black87)),],),); }
   Widget _buildBookingDescriptionSection() { final description = _booking?.description; return Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildSectionTitle('Booking Notes'), const SizedBox(height: 8), Text( (description != null && description.isNotEmpty) ? description : 'No additional notes provided.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4)),],); }
   Widget _buildPriceDetailsSection() { return Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildSectionTitle('Price Breakdown'), const SizedBox(height: 8), _buildPriceRow('Subtotal', _booking!.subtotal), _buildPriceRow('SST (8%)', _booking!.tax), const Divider(height: 16, thickness: 0.5), _buildPriceRow('Total Amount', _booking!.total, isTotal: true),],); }
-  Widget _buildPartyInfoContent(Map<String, dynamic>? partyData, String roleLabel) { final name = partyData?['name'] ?? '$roleLabel details unavailable'; final imageUrl = partyData?['profileImageUrl'] as String?; final email = partyData?['email'] as String?; final address = partyData?['address'] as String?; final phone = partyData?['phoneNumber'] as String?; return Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildSectionTitle('$roleLabel Details'), const SizedBox(height: 12), ListTile( contentPadding: EdgeInsets.zero, leading: CircleAvatar( radius: 28, backgroundColor: Colors.grey[200], backgroundImage: (imageUrl != null && imageUrl.isNotEmpty) ? NetworkImage(imageUrl) : null, child: (imageUrl == null || imageUrl.isEmpty) ? const Icon(Icons.person, color: Colors.grey) : null,), title: Text(name, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)), subtitle: Text(email ?? 'No email available', style: Theme.of(context).textTheme.bodySmall),), if (address != null && address.isNotEmpty) ...[ const SizedBox(height: 8), _buildInfoRow(Icons.location_on_outlined, address),], const SizedBox(height: 16), Row( mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [ OutlinedButton.icon( icon: const Icon(Icons.call_outlined, size: 18), label: const Text('Call'), onPressed: (phone != null && phone.isNotEmpty) ? () => _makePhoneCall(phone) : null, style: OutlinedButton.styleFrom( foregroundColor: (phone != null && phone.isNotEmpty) ? Theme.of(context).primaryColor : Colors.grey, side: BorderSide(color: (phone != null && phone.isNotEmpty) ? Theme.of(context).primaryColor : Colors.grey),),), OutlinedButton.icon( icon: const Icon(Icons.chat_bubble_outline, size: 18), label: const Text('Chat'), onPressed: () { final currentUserId = _auth.currentUser?.uid; final otherUserId = widget.userRole == 'Homeowner' ? _booking?.handymanId : _booking?.homeownerId; final otherPartyNameFromData = partyData?['name'] as String?; final otherPartyImageUrlFromData = partyData?['profileImageUrl'] as String?; if (currentUserId != null && otherUserId != null && otherUserId.isNotEmpty && otherPartyNameFromData != null) { List<String> ids = [currentUserId, otherUserId]; ids.sort(); String chatRoomId = ids.join('_'); print('Navigating to chat room: $chatRoomId'); Navigator.push( context, MaterialPageRoute( builder: (_) => ChatPage( chatRoomId: chatRoomId, otherUserId: otherUserId, otherUserName: otherPartyNameFromData, otherUserImageUrl: otherPartyImageUrlFromData, ),),); } else { print('Cannot initiate chat. User details missing. Current: $currentUserId, Other: $otherUserId, Name: $otherPartyNameFromData'); ScaffoldMessenger.of(context).showSnackBar( const SnackBar(content: Text('Cannot initiate chat. User details missing.')),); } },), ],), ],); }
+  Widget _buildPartyInfoContent(Map<String, dynamic>? partyData, String roleLabel) {
+    final name = partyData?['name'] ?? '$roleLabel details unavailable';
+    final imageUrl = partyData?['profileImageUrl'] as String?;
+    final email = partyData?['email'] as String?;
+    final address = partyData?['address'] as String?;
+    final phone = partyData?['phoneNumber'] as String?;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionTitle('$roleLabel Details'),
+        const SizedBox(height: 12),
+        // --- MODIFIED: This ListTile is now tappable for Homeowners ---
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: CircleAvatar(
+            radius: 28,
+            backgroundColor: Colors.grey[200],
+            backgroundImage: (imageUrl != null && imageUrl.isNotEmpty) ? NetworkImage(imageUrl) : null,
+            child: (imageUrl == null || imageUrl.isEmpty) ? const Icon(Icons.person, color: Colors.grey) : null,
+          ),
+          title: Text(name, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          subtitle: Text(email ?? 'No email available', style: Theme.of(context).textTheme.bodySmall),
+          // Add a trailing icon to indicate it's tappable
+          trailing: widget.userRole == 'Homeowner' ? const Icon(Icons.chevron_right) : null,
+          onTap: () {
+            // Only allow navigation if the current user is a Homeowner
+            if (widget.userRole == 'Homeowner' && _booking != null) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HandymanDetailPage(handymanId: _booking!.handymanId),
+                ),
+              );
+            }
+            // If the current user is a Handyman, tapping does nothing.
+          },
+        ),
+        if (address != null && address.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _buildInfoRow(Icons.location_on_outlined, address),
+        ],
+        const SizedBox(height: 16),
+        // The action buttons below remain unchanged
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.call_outlined, size: 18),
+              label: const Text('Call'),
+              onPressed: (phone != null && phone.isNotEmpty) ? () => _makePhoneCall(phone) : null,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: (phone != null && phone.isNotEmpty) ? Theme.of(context).primaryColor : Colors.grey,
+                side: BorderSide(color: (phone != null && phone.isNotEmpty) ? Theme.of(context).primaryColor : Colors.grey),
+              ),
+            ),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.chat_bubble_outline, size: 18),
+              label: const Text('Chat'),
+              onPressed: () {
+                final currentUserId = _auth.currentUser?.uid;
+                final otherUserId = widget.userRole == 'Homeowner' ? _booking?.handymanId : _booking?.homeownerId;
+                final otherPartyNameFromData = partyData?['name'] as String?;
+                final otherPartyImageUrlFromData = partyData?['profileImageUrl'] as String?;
+                if (currentUserId != null && otherUserId != null && otherUserId.isNotEmpty && otherPartyNameFromData != null) {
+                  List<String> ids = [currentUserId, otherUserId];
+                  ids.sort();
+                  String chatRoomId = ids.join('_');
+                  print('Navigating to chat room: $chatRoomId');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatPage(
+                        chatRoomId: chatRoomId,
+                        otherUserId: otherUserId,
+                        otherUserName: otherPartyNameFromData,
+                        otherUserImageUrl: otherPartyImageUrlFromData,
+                      ),
+                    ),
+                  );
+                } else {
+                  print('Cannot initiate chat. User details missing. Current: $currentUserId, Other: $otherUserId, Name: $otherPartyNameFromData');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Cannot initiate chat. User details missing.')),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
   Widget _buildReviewsContent() { return Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildSectionTitle('Reviews'), const SizedBox(height: 8), const Center(child: Padding( padding: EdgeInsets.symmetric(vertical: 20.0), child: Text('Reviews for this booking coming soon!', style: TextStyle(color: Colors.grey)),)),],); }
   Widget _buildInfoRow(IconData icon, String text, {TextStyle? textStyle, Color? iconColor}) { return Padding( padding: const EdgeInsets.symmetric(vertical: 4.0), child: Row( crossAxisAlignment: CrossAxisAlignment.start, children: [ Icon(icon, size: 18, color: iconColor ?? Colors.grey[700]), const SizedBox(width: 10), Expanded( child: Text( text, style: textStyle ?? Theme.of(context).textTheme.bodyMedium,)),],),); }
   Widget _buildSectionTitle(String title) { return Text( title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),); }
