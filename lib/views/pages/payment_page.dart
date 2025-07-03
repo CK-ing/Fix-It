@@ -140,6 +140,7 @@ class _PaymentPageState extends State<PaymentPage> {
           'subtotal': _booking!.subtotal,
           'tax': _booking!.tax,
           'total': _booking!.total,
+          'customRequestId': _booking!.customRequestId,
       };
 
       bookingMap.addAll(bookingUpdates);

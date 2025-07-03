@@ -27,6 +27,7 @@ class CustomRequestPage extends StatefulWidget {
 class _CustomRequestPageState extends State<CustomRequestPage> {
   final _formKey = GlobalKey<FormState>();
   final _dbRef = FirebaseDatabase.instance.ref(); 
+  final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _imagePicker = ImagePicker();
   final _uuid = const Uuid();
@@ -86,6 +87,13 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
       return;
     }
 
+    if (_imageFiles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please upload at least one photo of the issue.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -118,6 +126,7 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
         'requestId': requestId,
         'homeownerId': currentUser.uid,
         'handymanId': widget.handymanId,
+        'title': _titleController.text.trim(),
         'description': _descriptionController.text.trim(),
         'budgetRange': _selectedBudgetRange,
         'photoUrls': photoUrls,
@@ -185,14 +194,17 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
           children: [
             _buildHandymanHeader(),
             const SizedBox(height: 24),
+            _buildSectionTitle('What do you need help with? *'),
+            _buildTitleField(),
+            const SizedBox(height: 16),
             _buildSectionTitle('Describe Your Job *'),
             _buildDescriptionField(),
             const SizedBox(height: 24),
-            _buildSectionTitle('Add Photos (Optional)'),
-            _buildPhotoUploader(),
-            const SizedBox(height: 24),
             _buildSectionTitle('Your Budget *'),
             _buildBudgetDropdown(),
+            const SizedBox(height: 24),
+            _buildSectionTitle('Add Photos *'),
+            _buildPhotoUploader(),
           ],
         ),
       ),
@@ -257,6 +269,26 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTitleField() {
+    return TextFormField(
+      controller: _titleController,
+      textCapitalization: TextCapitalization.sentences,
+      decoration: const InputDecoration(
+        hintText: 'e.g., Mow the lawn, Fix leaky pipe, etc.',
+        border: OutlineInputBorder(),
+      ),
+      validator: (value) {
+        if (value == null || value.trim().isEmpty) {
+          return 'Please enter a short title for your job.';
+        }
+        if (value.length > 50) {
+          return 'Title cannot be more than 50 characters.';
+        }
+        return null;
+      },
     );
   }
 

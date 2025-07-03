@@ -32,6 +32,7 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   Booking? _booking;
   Map<String, dynamic>? _serviceDetails;
   Map<String, dynamic>? _otherPartyDetails;
+  Map<String, dynamic>? _customRequestDetails;
 
   bool _isLoading = true;
   String? _error;
@@ -181,7 +182,6 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
       _booking = Booking.fromSnapshot(bookingSnapshot);
       if (!mounted || _booking == null) return;
 
-      // Listen for review status if the booking is completed by a homeowner
       if (widget.userRole == 'Homeowner' && _booking!.status == 'Completed') {
         _listenForReview();
       }
@@ -189,31 +189,41 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
       // --- MODIFIED: Fetch all related data concurrently ---
       final results = await Future.wait([
         // Fetch service details ONLY if it's a standard booking
-        if (_booking!.serviceId != null)
+        if (_booking!.serviceId != null && _booking!.serviceId!.isNotEmpty)
           _dbRef.child('services').child(_booking!.serviceId!).get(),
-        // Always fetch homeowner details
-        _dbRef.child('users').child(_booking!.homeownerId).get(),
-        // Always fetch handyman details
-        _dbRef.child('users').child(_booking!.handymanId).get(),
+        
+        // Fetch custom request details ONLY if it's a custom booking
+        if (_booking!.customRequestId != null && _booking!.customRequestId!.isNotEmpty)
+          _dbRef.child('custom_requests').child(_booking!.customRequestId!).get(),
+        
+        // Always fetch the other party's user details
+        _dbRef.child('users').child(widget.userRole == 'Homeowner' ? _booking!.handymanId : _booking!.homeownerId).get(),
       ]);
 
       if (!mounted) return;
 
       int resultIndex = 0;
-      if (_booking!.serviceId != null) {
+      // Process results based on what was fetched
+      if (_booking!.serviceId != null && _booking!.serviceId!.isNotEmpty) {
         final serviceSnap = results[resultIndex++];
         if (serviceSnap.exists) {
           _serviceDetails = Map<String, dynamic>.from(serviceSnap.value as Map);
         }
       }
       
-      final homeownerSnap = results[resultIndex++];
-      final handymanSnap = results[resultIndex++];
+      if (_booking!.customRequestId != null && _booking!.customRequestId!.isNotEmpty) {
+        final requestSnap = results[resultIndex++];
+        if (requestSnap.exists) {
+          _customRequestDetails = Map<String, dynamic>.from(requestSnap.value as Map);
+        }
+      }
+      
+      final otherPartySnap = results[resultIndex];
 
       setState(() {
-        _otherPartyDetails = widget.userRole == 'Homeowner'
-            ? (handymanSnap.exists ? Map<String, dynamic>.from(handymanSnap.value as Map) : null)
-            : (homeownerSnap.exists ? Map<String, dynamic>.from(homeownerSnap.value as Map) : null);
+        if (otherPartySnap.exists) {
+          _otherPartyDetails = Map<String, dynamic>.from(otherPartySnap.value as Map);
+        }
         _isLoading = false;
       });
 
@@ -241,7 +251,34 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
   Widget build(BuildContext context) { String appBarTitle = 'Booking Details'; if (!_isLoading && _booking != null) { appBarTitle = _booking!.serviceName; } else if (_isLoading) { appBarTitle = 'Loading...'; } return Scaffold( backgroundColor: Colors.blue[50], appBar: AppBar( title: Text(appBarTitle), elevation: 1,), body: _buildContent(), bottomNavigationBar: SafeArea( child: _buildBottomActions() ?? const SizedBox.shrink(),)); }
   Widget _buildContent() { if (_isLoading) { return const Center(child: CircularProgressIndicator()); } if (_error != null) { return Center(child: Padding(padding: const EdgeInsets.all(16.0), child: Text(_error!, style: const TextStyle(color: Colors.red)))); } if (_booking == null) { return const Center(child: Text('Booking details not found.')); } final otherPartyData = _otherPartyDetails; final otherPartyRoleLabel = widget.userRole == 'Homeowner' ? 'Handyman' : 'Customer'; return SingleChildScrollView( padding: const EdgeInsets.only(bottom: 120), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildCardWrapper( child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildServiceImage(), const SizedBox(height: 16), _buildBookingSummarySection(), _buildReasonSection(), const Divider(height: 24, thickness: 0.5), _buildBookingDescriptionSection(), const SizedBox(height: 16), _buildPriceDetailsSection(),],)), _buildCardWrapper(child: _buildPartyInfoContent(otherPartyData, otherPartyRoleLabel)), _buildCardWrapper(child: _buildReviewsContent()),],),); }
   Widget _buildCardWrapper({required Widget child}) { return Card( margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0), elevation: 0, shape: RoundedRectangleBorder( borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300, width: 0.5)), color: Theme.of(context).cardColor, child: Padding( padding: const EdgeInsets.all(16.0), child: child,),); }
-  Widget _buildServiceImage() { final imageUrl = _serviceDetails?['imageUrl'] as String?; return ClipRRect( borderRadius: BorderRadius.circular(8.0), child: Container( height: 180, width: double.infinity, color: Colors.grey[200], child: (imageUrl != null && imageUrl.isNotEmpty) ? Image.network( imageUrl, fit: BoxFit.cover, loadingBuilder: (context, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()), errorBuilder: (context, error, stack) => const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 40)),) : const Center(child: Icon(Icons.construction, color: Colors.grey, size: 40)),),); }
+  Widget _buildServiceImage() {
+    String? imageUrl;
+
+    // First, try to get the image from standard service details
+    if (_serviceDetails != null) {
+      imageUrl = _serviceDetails?['imageUrl'] as String?;
+    } 
+    // If that fails, try to get it from custom request details
+    else if (_customRequestDetails != null) {
+      final photoUrls = _customRequestDetails?['photoUrls'] as List?;
+      if (photoUrls != null && photoUrls.isNotEmpty) {
+        imageUrl = photoUrls.first as String?;
+      }
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8.0),
+      child: Container(
+        height: 180,
+        width: double.infinity,
+        color: Colors.grey[200],
+        child: (imageUrl != null && imageUrl.isNotEmpty)
+            ? Image.network(imageUrl, fit: BoxFit.cover, loadingBuilder: (context, child, progress) => progress == null ? child : const Center(child: CircularProgressIndicator()), errorBuilder: (context, error, stack) => const Center(child: Icon(Icons.broken_image, color: Colors.grey, size: 40)),)
+            // Fallback icon if no image is found in either place
+            : const Center(child: Icon(Icons.design_services_outlined, color: Colors.grey, size: 50)),
+      ),
+    );
+  }
   Widget _buildBookingSummarySection() { return Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ Text( _booking!.serviceName, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),), const SizedBox(height: 12), _buildInfoRow(Icons.calendar_today_outlined, _booking!.formattedScheduledDateTime, textStyle: Theme.of(context).textTheme.titleSmall), const SizedBox(height: 6), Row( mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [ Flexible( child: _buildInfoRow(Icons.vpn_key_outlined, _booking!.bookingId, textStyle: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey)) ), Chip( label: Text(_booking!.status, style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w500)), backgroundColor: _getStatusColor(_booking!.status), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0), visualDensity: VisualDensity.compact, side: BorderSide.none,),],)],); }
   Widget _buildReasonSection() { String reasonLabel = ''; String? reasonText; Color reasonColor = Colors.grey.shade700; if (_booking!.status == 'Declined') { reasonLabel = 'Reason for Decline'; reasonText = _booking!.declineReason; reasonColor = Colors.red.shade800; } else if (_booking!.status == 'Cancelled' || _booking!.status == 'Cancelled_Handyman') { reasonLabel = 'Reason for Cancellation'; reasonText = _booking!.cancellationReason; reasonColor = Colors.grey.shade800; } if (reasonText == null || reasonText.isEmpty) { if (_booking!.status == 'Declined' || _booking!.status.startsWith('Cancelled')) { return Padding( padding: const EdgeInsets.only(top: 10.0, bottom: 4.0), child: _buildInfoRow(Icons.info_outline, 'No reason provided.', iconColor: reasonColor),); } return const SizedBox.shrink(); } return Padding( padding: const EdgeInsets.only(top: 10.0, bottom: 4.0), child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ Text(reasonLabel, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: reasonColor)), const SizedBox(height: 4), Text(reasonText, style: TextStyle(fontSize: 14, fontStyle: FontStyle.italic, color: Colors.black87)),],),); }
   Widget _buildBookingDescriptionSection() { final description = _booking?.description; return Column( crossAxisAlignment: CrossAxisAlignment.start, children: [ _buildSectionTitle('Booking Notes'), const SizedBox(height: 8), Text( (description != null && description.isNotEmpty) ? description : 'No additional notes provided.', style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.4)),],); }

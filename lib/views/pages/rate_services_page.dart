@@ -5,19 +5,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:uuid/uuid.dart'; // For generating unique filenames for photos
+import 'package:uuid/uuid.dart';
 
 class RateServicesPage extends StatefulWidget {
   final String bookingId;
-  final String? serviceId; // Make serviceId optional
+  final String? serviceId;
   final String handymanId;
-  final String serviceName; // Add serviceName
+  final String serviceName;
 
   const RateServicesPage({
     required this.bookingId,
     this.serviceId,
     required this.handymanId,
-    required this.serviceName, // Make it required
+    required this.serviceName,
     super.key,
   });
 
@@ -33,21 +33,21 @@ class _RateServicesPageState extends State<RateServicesPage> {
   final ImagePicker _picker = ImagePicker();
   final Uuid _uuid = const Uuid();
 
-  // State Variables
-  Map<String, dynamic>? _serviceData;
-  bool _isLoadingService = true;
+  // --- MODIFIED: State Variables ---
+  String? _serviceImageUrl; // This will hold the image URL, if one exists
+  bool _isLoading = true;
   bool _isSubmitting = false;
   String? _error;
 
   // Review Form State
   int _rating = 0;
-  bool? _isRecommended; // null = unselected, true = thumbs up, false = thumbs down
+  bool? _isRecommended;
   final List<File> _imageFiles = [];
 
   @override
   void initState() {
     super.initState();
-    _loadServiceDetails();
+    _loadDataForRating();
   }
 
   @override
@@ -62,38 +62,44 @@ class _RateServicesPageState extends State<RateServicesPage> {
     }
   }
 
-  // NEW CODE
-  Future<void> _loadServiceDetails() async {
-    // If there is no serviceId (i.e., it's a custom job), we don't need to fetch anything.
-    if (widget.serviceId == null || widget.serviceId!.isEmpty) {
-      setState(() {
-        _isLoadingService = false;
-        _serviceData = null; // Ensure serviceData is null
-      });
-      return;
-    }
-
+  Future<void> _loadDataForRating() async {
     try {
-      final snapshot = await _dbRef.child('services').child(widget.serviceId!).get();
-      if (mounted) {
+      String? imageUrl;
+      // Case 1: It's a standard service booking with a serviceId
+      if (widget.serviceId != null && widget.serviceId!.isNotEmpty) {
+        final snapshot = await _dbRef.child('services/${widget.serviceId}').get();
         if (snapshot.exists) {
-          setState(() {
-            _serviceData = Map<String, dynamic>.from(snapshot.value as Map);
-            _isLoadingService = false;
-          });
-        } else {
-          // If service is not found (e.g., deleted), just proceed without image data
-          setState(() {
-            _isLoadingService = false;
-            _serviceData = null;
-          });
+          final data = Map<String, dynamic>.from(snapshot.value as Map);
+          imageUrl = data['imageUrl'] as String?;
+        }
+      } 
+      // Case 2: It's a custom job booking
+      else {
+        final bookingSnapshot = await _dbRef.child('bookings/${widget.bookingId}/customRequestId').get();
+        if (bookingSnapshot.exists) {
+          final customRequestId = bookingSnapshot.value as String;
+          final requestSnapshot = await _dbRef.child('custom_requests/$customRequestId').get();
+          if (requestSnapshot.exists) {
+            final requestData = Map<String, dynamic>.from(requestSnapshot.value as Map);
+            final photoUrls = requestData['photoUrls'] as List?;
+            if (photoUrls != null && photoUrls.isNotEmpty) {
+              imageUrl = photoUrls.first as String?;
+            }
+          }
         }
       }
+
+      if (mounted) {
+        setState(() {
+          _serviceImageUrl = imageUrl;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      print("Error loading service details for review: $e");
+      print("Error loading details for review: $e");
       if(mounted) {
         setState(() {
-          _isLoadingService = false;
+          _isLoading = false;
           _error = "Could not load service details.";
         });
       }
@@ -188,9 +194,9 @@ class _RateServicesPageState extends State<RateServicesPage> {
 
       await newReviewRef.set(reviewData);
 
-      // Create Notification for Handyman
       final homeownerSnapshot = await _dbRef.child('users/${currentUser.uid}/name').get();
       final homeownerName = homeownerSnapshot.value as String? ?? 'A customer';
+
       final serviceName = widget.serviceName;
       await _dbRef.child('notifications/${widget.handymanId}').push().set({
         'title': 'You have a new review!',
@@ -225,7 +231,7 @@ class _RateServicesPageState extends State<RateServicesPage> {
         title: const Text('Rate This Service'),
         elevation: 1,
       ),
-      body: _isLoadingService
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
@@ -235,7 +241,7 @@ class _RateServicesPageState extends State<RateServicesPage> {
   }
 
   Widget _buildReviewForm() {
-    final serviceImageUrl = _serviceData?['imageUrl'] as String?;
+    final serviceImageUrl = _serviceImageUrl;
     final serviceName = widget.serviceName;
 
     return SingleChildScrollView(
@@ -285,222 +291,32 @@ class _RateServicesPageState extends State<RateServicesPage> {
               )
             : null,
       ),
-      child: Container(
-        alignment: Alignment.bottomLeft,
-        padding: const EdgeInsets.all(16.0),
-        child: Text(
-          name,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                shadows: [
-                  const Shadow(blurRadius: 4, color: Colors.black54)
-                ]
-              ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
-      ),
-    );
-  }
-
-  Widget _buildStarRating() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(5, (index) {
-        return IconButton(
-          icon: Icon(
-            _rating > index ? Icons.star_rounded : Icons.star_border_rounded,
-            color: _rating > index ? Colors.amber[600] : Colors.grey,
-            size: 44,
-          ),
-          onPressed: _isSubmitting ? null : () {
-            setState(() {
-              _rating = index + 1;
-            });
-          },
-        );
-      }),
-    );
-  }
-  
-  Widget _buildRecommendationSelector() {
-    return Row(
-      children: [
-        Expanded(
-          child: _buildRecommendationButton(
-            context: context,
-            icon: Icons.thumb_up_alt_outlined,
-            label: 'Yes',
-            isSelected: _isRecommended == true,
-            onTap: () => setState(() => _isRecommended = true),
-            selectedColor: Colors.green,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildRecommendationButton(
-            context: context,
-            icon: Icons.thumb_down_alt_outlined,
-            label: 'No',
-            isSelected: _isRecommended == false,
-            onTap: () => setState(() => _isRecommended = false),
-            selectedColor: Colors.red,
-          ),
-        ),
-      ],
-    );
-  }
-  
-  Widget _buildRecommendationButton({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required Color selectedColor,
-    required VoidCallback onTap,
-  }) {
-    final Color color = isSelected ? selectedColor : Colors.grey;
-    final Color backgroundColor = isSelected ? selectedColor.withOpacity(0.1) : Colors.grey.withOpacity(0.1);
-
-    return InkWell(
-      onTap: _isSubmitting ? null : onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
-  }
-
-
-  Widget _buildPhotoUploader() {
-    return Container(
-      padding: const EdgeInsets.all(8.0),
-      decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Wrap(
-        spacing: 8.0,
-        runSpacing: 8.0,
+      child: Stack(
         children: [
-          ..._imageFiles.asMap().entries.map((entry) {
-            int index = entry.key;
-            File file = entry.value;
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 72, height: 72,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8.0),
-                    image: DecorationImage(image: FileImage(file), fit: BoxFit.cover),
+          if (imageUrl == null || imageUrl.isEmpty)
+            const Center(child: Icon(Icons.design_services_outlined, size: 60, color: Colors.grey)),
+          Container(
+            alignment: Alignment.bottomLeft,
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              name,
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    shadows: [ const Shadow(blurRadius: 4, color: Colors.black54) ]
                   ),
-                ),
-                Positioned(
-                  top: -8, right: -8,
-                  child: GestureDetector(
-                    onTap: _isSubmitting ? null : () => _removeImage(index),
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.close, color: Colors.white, size: 14),
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }).toList(),
-          if (_imageFiles.length < 5)
-            GestureDetector(
-              onTap: _isSubmitting ? null : _pickImages,
-              child: Container(
-                width: 72, height: 72,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid),
-                ),
-                child: Icon(Icons.add_a_photo_outlined, color: Colors.grey.shade600, size: 32),
-              ),
             ),
+          ),
         ],
       ),
     );
   }
-
-  Widget _buildCommentField() {
-    return TextFormField(
-      controller: _commentController,
-      maxLines: 5,
-      enabled: !_isSubmitting,
-      textCapitalization: TextCapitalization.sentences,
-      decoration: InputDecoration(
-        hintText: 'Share more about your experience.',
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300)
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300)
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Theme.of(context).primaryColor)
-        ),
-        alignLabelWithHint: true,
-        fillColor: Colors.grey.withOpacity(0.05),
-        filled: true,
-      ),
-    );
-  }
   
-  Widget _buildSubmitButton() {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, -2))]
-      ),
-      child: SafeArea(
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).primaryColor,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          onPressed: _isSubmitting ? null : _submitReview,
-          child: _isSubmitting
-              ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-              : const Text('Submit Review'),
-        ),
-      ),
-    );
-  }
+  Widget _buildSectionTitle(String title) { return Padding( padding: const EdgeInsets.only(bottom: 12.0), child: Text( title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600), ), ); }
+  Widget _buildStarRating() { return Row( mainAxisAlignment: MainAxisAlignment.center, children: List.generate(5, (index) { return IconButton( icon: Icon( _rating > index ? Icons.star_rounded : Icons.star_border_rounded, color: _rating > index ? Colors.amber[600] : Colors.grey, size: 44, ), onPressed: _isSubmitting ? null : () { setState(() { _rating = index + 1; }); }, ); }), ); }
+  Widget _buildRecommendationSelector() { return Row( children: [ Expanded( child: _buildRecommendationButton( context: context, icon: Icons.thumb_up_alt_outlined, label: 'Yes', isSelected: _isRecommended == true, onTap: () => setState(() => _isRecommended = true), selectedColor: Colors.green, ), ), const SizedBox(width: 16), Expanded( child: _buildRecommendationButton( context: context, icon: Icons.thumb_down_alt_outlined, label: 'No', isSelected: _isRecommended == false, onTap: () => setState(() => _isRecommended = false), selectedColor: Colors.red, ), ), ], ); }
+  Widget _buildRecommendationButton({ required BuildContext context, required IconData icon, required String label, required bool isSelected, required Color selectedColor, required VoidCallback onTap, }) { final Color color = isSelected ? selectedColor : Colors.grey; final Color backgroundColor = isSelected ? selectedColor.withOpacity(0.1) : Colors.grey.withOpacity(0.1); return InkWell( onTap: _isSubmitting ? null : onTap, borderRadius: BorderRadius.circular(12), child: Container( padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration( color: backgroundColor, borderRadius: BorderRadius.circular(12), border: Border.all(color: color), ), child: Row( mainAxisAlignment: MainAxisAlignment.center, children: [ Icon(icon, color: color, size: 20), const SizedBox(width: 8), Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)), ], ), ), ); }
+  Widget _buildPhotoUploader() { return Container( padding: const EdgeInsets.all(8.0), decoration: BoxDecoration( color: Colors.grey.withOpacity(0.05), borderRadius: BorderRadius.circular(12), ), child: Wrap( spacing: 8.0, runSpacing: 8.0, children: [ ..._imageFiles.asMap().entries.map((entry) { int index = entry.key; File file = entry.value; return Stack( clipBehavior: Clip.none, children: [ Container( width: 72, height: 72, decoration: BoxDecoration( borderRadius: BorderRadius.circular(8.0), image: DecorationImage(image: FileImage(file), fit: BoxFit.cover), ), ), Positioned( top: -8, right: -8, child: GestureDetector( onTap: _isSubmitting ? null : () => _removeImage(index), child: Container( padding: const EdgeInsets.all(2), decoration: const BoxDecoration( color: Colors.red, shape: BoxShape.circle, ), child: const Icon(Icons.close, color: Colors.white, size: 14), ), ), ), ], ); }).toList(), if (_imageFiles.length < 5) GestureDetector( onTap: _isSubmitting ? null : _pickImages, child: Container( width: 72, height: 72, decoration: BoxDecoration( borderRadius: BorderRadius.circular(8.0), border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid), ), child: Icon(Icons.add_a_photo_outlined, color: Colors.grey.shade600, size: 32), ), ), ], ), ); }
+  Widget _buildCommentField() { return TextFormField( controller: _commentController, maxLines: 5, enabled: !_isSubmitting, textCapitalization: TextCapitalization.sentences, decoration: InputDecoration( hintText: 'Share more about your experience.', border: OutlineInputBorder( borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300) ), enabledBorder: OutlineInputBorder( borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade300) ), focusedBorder: OutlineInputBorder( borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Theme.of(context).primaryColor) ), alignLabelWithHint: true, fillColor: Colors.grey.withOpacity(0.05), filled: true, ), ); }
+  Widget _buildSubmitButton() { return Container( padding: const EdgeInsets.all(16.0), decoration: BoxDecoration( color: Theme.of(context).cardColor, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, -2))] ), child: SafeArea( child: ElevatedButton( style: ElevatedButton.styleFrom( backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), ), onPressed: _isSubmitting ? null : _submitReview, child: _isSubmitting ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)) : const Text('Submit Review'), ), ), ); }
 }

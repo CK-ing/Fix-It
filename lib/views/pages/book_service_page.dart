@@ -160,7 +160,7 @@ class _BookServicePageState extends State<BookServicePage> {
 
         // Adapt the custom request data to match the structure our UI expects
         loadedData = {
-          'name': requestData['description'], // Use description as the "name"
+          'name': requestData['title'], // Use the new 'title' field
           'imageUrl': (requestData['photoUrls'] as List?)?.isNotEmpty == true ? requestData['photoUrls'][0] : null,
           'price': requestData['quotePrice'],
           'priceType': requestData['quotePriceType'],

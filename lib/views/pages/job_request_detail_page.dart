@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
 
+import 'chat_page.dart';
+
 class JobRequestDetailPage extends StatefulWidget {
   final CustomRequestViewModel requestViewModel;
 
@@ -173,6 +175,9 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
         children: [
           _buildHomeownerCard(),
           const SizedBox(height: 24),
+          _buildSectionTitle('Job Title'),
+          Text(widget.requestViewModel.request.title, style: const TextStyle(fontSize: 16, height: 1.5)),
+          const SizedBox(height: 24),
           _buildSectionTitle('Job Description'),
           Text(widget.requestViewModel.request.description, style: const TextStyle(fontSize: 16, height: 1.5)),
           const SizedBox(height: 24),
@@ -193,30 +198,53 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
   }
 
   Widget _buildHomeownerCard() {
+    final homeownerName = widget.requestViewModel.homeownerName;
+    final homeownerImageUrl = widget.requestViewModel.homeownerImageUrl;
+    final homeownerId = widget.requestViewModel.request.homeownerId;
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
     return Card(
       elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundImage: widget.requestViewModel.homeownerImageUrl != null
-                  ? NetworkImage(widget.requestViewModel.homeownerImageUrl!)
-                  : null,
-              child: widget.requestViewModel.homeownerImageUrl == null
-                  ? const Icon(Icons.person)
-                  : null,
-            ),
-            const SizedBox(width: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("REQUEST FROM", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                Text(widget.requestViewModel.homeownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ],
-            )
-          ],
+      clipBehavior: Clip.antiAlias, // Ensures the InkWell ripple respects the border radius
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: InkWell( // <-- WRAPPED WITH INKWELL
+        onTap: () {
+          if (currentUserId == null) return;
+          // Navigate to chat page
+          List<String> ids = [currentUserId, homeownerId];
+          ids.sort();
+          String chatRoomId = ids.join('_');
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => ChatPage(
+              chatRoomId: chatRoomId,
+              otherUserId: homeownerId,
+              otherUserName: homeownerName,
+              otherUserImageUrl: homeownerImageUrl,
+            )),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 24,
+                backgroundImage: homeownerImageUrl != null ? NetworkImage(homeownerImageUrl) : null,
+                child: homeownerImageUrl == null ? const Icon(Icons.person) : null,
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("REQUEST FROM", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(homeownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              const Spacer(),
+              const Icon(Icons.chat_bubble_outline, color: Colors.grey),
+            ],
+          ),
         ),
       ),
     );
@@ -227,41 +255,68 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
       padding: const EdgeInsets.only(bottom: 8.0),
       child: Text(
         title,
-        style: const TextStyle(
-          fontSize: 18,
-          // Using a heavier bold weight for more emphasis
-          fontWeight: FontWeight.w700, 
-          color: Colors.black87,
-        ),
+        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
       ),
     );
   }
 
   Widget _buildPhotoGallery() {
     return SizedBox(
-      height: 120,
+      height: 100,
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: widget.requestViewModel.request.photoUrls.length,
         itemBuilder: (context, index) {
           final imageUrl = widget.requestViewModel.request.photoUrls[index];
-          return Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                imageUrl,
-                width: 120,
-                height: 120,
-                fit: BoxFit.cover,
-                errorBuilder: (c, o, s) => Container(
-                  width: 120, height: 120, color: Colors.grey[200],
-                  child: const Icon(Icons.error),
+          // --- WRAPPED THE IMAGE WITH GESTUREDETECTOR ---
+          return GestureDetector(
+            onTap: () => _viewPhotoFullScreen(imageUrl),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  imageUrl,
+                  width: 100,
+                  height: 100,
+                  fit: BoxFit.cover,
+                  errorBuilder: (c, o, s) => Container(
+                    width: 100, height: 100, color: Colors.grey[200],
+                    child: const Icon(Icons.error, color: Colors.grey),
+                  ),
                 ),
               ),
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _viewPhotoFullScreen(String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          // --- MODIFIED: Removed the Center widget ---
+          body: InteractiveViewer(
+            panEnabled: true,
+            boundaryMargin: const EdgeInsets.all(20),
+            minScale: 0.5,
+            maxScale: 4,
+            child: Center( // We can add Center back inside the viewer to center the image itself
+              child: Image.network(imageUrl),
+            ),
+          ),
+        ),
       ),
     );
   }

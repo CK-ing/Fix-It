@@ -4,6 +4,7 @@ class CustomRequest {
   final String requestId;
   final String homeownerId;
   final String handymanId;
+  final String title;
   final String description;
   final String budgetRange;
   final List<String> photoUrls;
@@ -16,6 +17,7 @@ class CustomRequest {
     required this.requestId,
     required this.homeownerId,
     required this.handymanId,
+    required this.title,
     required this.description,
     required this.budgetRange,
     required this.photoUrls,
@@ -31,6 +33,7 @@ class CustomRequest {
       requestId: snapshot.key ?? '',
       homeownerId: data['homeownerId'] ?? '',
       handymanId: data['handymanId'] ?? '',
+      title: data['title'] ?? 'Custom Request',
       description: data['description'] ?? 'No description provided.',
       budgetRange: data['budgetRange'] ?? 'N/A',
       photoUrls: data['photoUrls'] != null ? List<String>.from(data['photoUrls']) : [],

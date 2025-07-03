@@ -157,13 +157,12 @@ class _JobRequestsPageState extends State<JobRequestsPage> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
       child: InkWell(
         onTap: () {
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => JobRequestDetailPage(
-      requestViewModel: viewModel,
-    )),
-  );
-},
+          // The navigation to the detail page remains the same
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => JobRequestDetailPage(requestViewModel: viewModel)),
+          );
+        },
         borderRadius: BorderRadius.circular(10.0),
         child: Padding(
           padding: const EdgeInsets.all(12.0),
@@ -196,12 +195,21 @@ class _JobRequestsPageState extends State<JobRequestsPage> {
                 ],
               ),
               const Divider(height: 24),
+              // --- MODIFIED: Display title first, then description ---
               Text(
-                viewModel.request.description,
+                viewModel.request.title, // Use the new title field here
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                viewModel.request.description, // Description is now a subtitle
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: Colors.grey[800]),
               ),
+              // ---
               const SizedBox(height: 8),
               Chip(
                 label: Text('Budget: ${viewModel.request.budgetRange}'),
