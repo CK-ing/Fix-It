@@ -128,6 +128,11 @@ class _BookingDetailPageState extends State<BookingDetailPage> {
               notificationBody = 'Unfortunately, $actorName has declined your booking for "${_booking!.serviceName}".';
               notificationType = 'booking_declined';
               break;
+            case 'Cancelled':
+            notificationTitle = 'Booking Cancelled by Handyman';
+            notificationBody = '$actorName has cancelled your booking for "${_booking!.serviceName}".';
+            notificationType = 'booking_cancelled';
+            break;
           }
         } 
         else if (widget.userRole == 'Homeowner') {

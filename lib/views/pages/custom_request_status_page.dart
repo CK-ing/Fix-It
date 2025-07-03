@@ -5,6 +5,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
 
 import 'book_service_page.dart';
+import 'chat_page.dart';
 
 // We will create this page in the next step
 // import 'finalize_booking_page.dart';
@@ -147,7 +148,11 @@ class _CustomRequestStatusPageState extends State<CustomRequestStatusPage> {
       children: [
         _buildHandymanQuoteCard(),
         const SizedBox(height: 24),
-        _buildSectionTitle('Your Original Request'),
+        _buildSectionTitle('Your Request Title'),
+        const SizedBox(height: 8),
+        Text(_requestData!.title, style: const TextStyle(height: 1.5, fontSize: 15)),
+        const SizedBox(height: 8),
+        _buildSectionTitle('Your Request Description'),
         const SizedBox(height: 8),
         Text(_requestData!.description, style: const TextStyle(height: 1.5, fontSize: 15)),
         if (_requestData!.photoUrls.isNotEmpty) ...[
@@ -166,7 +171,22 @@ class _CustomRequestStatusPageState extends State<CustomRequestStatusPage> {
 
     return Card(
       elevation: 4,
+      clipBehavior: Clip.antiAlias, // Important for InkWell ripple
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell( // <-- WRAPPED WITH INKWELL
+        onTap: () {
+          final currentUser = FirebaseAuth.instance.currentUser;
+          if (currentUser == null || _requestData == null) return;
+          List<String> ids = [currentUser.uid, _requestData!.handymanId];
+          ids.sort();
+          String chatRoomId = ids.join('_');
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(
+            chatRoomId: chatRoomId,
+            otherUserId: _requestData!.handymanId,
+            otherUserName: handymanName,
+            otherUserImageUrl: handymanImageUrl,
+          )));
+        },
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -210,13 +230,13 @@ class _CustomRequestStatusPageState extends State<CustomRequestStatusPage> {
           ],
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
     );
   }
 
@@ -227,19 +247,50 @@ class _CustomRequestStatusPageState extends State<CustomRequestStatusPage> {
         scrollDirection: Axis.horizontal,
         itemCount: _requestData!.photoUrls.length,
         itemBuilder: (context, index) {
-          return Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                _requestData!.photoUrls[index],
-                width: 100,
-                height: 100,
-                fit: BoxFit.cover,
+          final imageUrl = _requestData!.photoUrls[index];
+          return GestureDetector( // <-- WRAPPED WITH GESTUREDETECTOR
+            onTap: () => _viewPhotoFullScreen(imageUrl),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  imageUrl,
+                  width: 100,
+                  height: 100,
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _viewPhotoFullScreen(String imageUrl) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          body: InteractiveViewer(
+            panEnabled: true,
+            boundaryMargin: const EdgeInsets.all(20),
+            minScale: 0.5,
+            maxScale: 4,
+            child: Center(
+              child: Image.network(imageUrl),
+            ),
+          ),
+        ),
       ),
     );
   }
