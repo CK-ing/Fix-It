@@ -3,6 +3,10 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'auth/welcome_screen.dart';
 import 'edit_profile_page.dart';
+import 'favourites_page.dart';
+import 'job_requests_page.dart';
+import 'notifications_page.dart';
+import 'quotes_received_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -15,6 +19,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String name = 'Loading...';
   String email = '';
   String profileImageUrl = 'assets/images/default_profile.png';
+  String _role = '';
   final user = FirebaseAuth.instance.currentUser;
 
   @override
@@ -36,6 +41,7 @@ class _ProfilePageState extends State<ProfilePage> {
           name = data['name'] ?? 'Unknown';
           email = data['email'] ?? '';
           profileImageUrl = (data['profileImageUrl'] as String?) ?? 'assets/images/default_profile.png';
+          _role = data['role'] ?? '';
         });
       } else {
         setState(() {
@@ -60,9 +66,38 @@ class _ProfilePageState extends State<ProfilePage> {
       Navigator.push(
   context,
   MaterialPageRoute(builder: (_) => const EditProfilePage()),
-); // ✅ Use the correct route name
-    } else if (title == 'Log out') {
+      ); 
+    } else if (title == 'Favourites') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const FavouritesPage()),
+      );
+    } else if (title == 'Notifications') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NotificationsPage()),
+      );
+      }else if (title == 'My Quotes') {
+      // For Homeowner
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const QuotesReceivedPage()),
+      );
+    } else if (title == 'Job Requests') {
+      // For Handyman
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const JobRequestsPage()),
+      );
+    }
+       else if (title == 'Log out') {
       _logout(context);
+    }
+    else {
+      // Placeholder for other buttons
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$title feature coming soon!'))
+      );
     }
   }
 
@@ -112,9 +147,15 @@ class _ProfilePageState extends State<ProfilePage> {
 
           _buildSectionTitle('Account'),
           _buildListTile(Icons.person_outline, 'Edit profile'),
-          _buildListTile(Icons.favorite_border, 'Favourites'),
+          if (_role == 'Homeowner')
+            _buildListTile(Icons.favorite_border, 'Favourites')
+          else if (_role == 'Handyman')
+            _buildListTile(Icons.bar_chart_outlined, 'Statistics'),
           _buildListTile(Icons.notifications_none, 'Notifications'),
-          _buildListTile(Icons.lock_outline, 'Change Password'),
+          if (_role == 'Homeowner')
+            _buildListTile(Icons.request_quote_outlined, 'My Quotes')
+          else if (_role == 'Handyman')
+            _buildListTile(Icons.post_add_outlined, 'Job Requests'),
 
           const SizedBox(height: 20),
           _buildSectionTitle('Support & About'),
