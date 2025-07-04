@@ -5,8 +5,8 @@ import 'auth/welcome_screen.dart';
 import 'edit_profile_page.dart';
 import 'favourites_page.dart';
 import 'job_requests_page.dart';
+import 'my_custom_requests_page.dart';
 import 'notifications_page.dart';
-import 'quotes_received_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -77,13 +77,13 @@ class _ProfilePageState extends State<ProfilePage> {
         context,
         MaterialPageRoute(builder: (_) => const NotificationsPage()),
       );
-      }else if (title == 'My Quotes') {
-      // For Homeowner
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const QuotesReceivedPage()),
-      );
-    } else if (title == 'Job Requests') {
+      } else if (title == 'My Custom Requests') {
+  // For Homeowner
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const MyCustomRequestsPage()),
+  );
+} else if (title == 'Job Requests') {
       // For Handyman
       Navigator.push(
         context,
@@ -153,7 +153,7 @@ class _ProfilePageState extends State<ProfilePage> {
             _buildListTile(Icons.bar_chart_outlined, 'Statistics'),
           _buildListTile(Icons.notifications_none, 'Notifications'),
           if (_role == 'Homeowner')
-            _buildListTile(Icons.request_quote_outlined, 'My Quotes')
+            _buildListTile(Icons.assignment_outlined, 'My Custom Requests')
           else if (_role == 'Handyman')
             _buildListTile(Icons.post_add_outlined, 'Job Requests'),
 
