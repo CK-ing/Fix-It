@@ -196,23 +196,6 @@ class _MyCustomRequestsPageState extends State<MyCustomRequestsPage> with Single
           // --- NEW NAVIGATION LOGIC ---
           switch (request.status) {
             case 'Booked':
-              // Find the booking that corresponds to this custom request
-              final query = _dbRef.child('bookings').orderByChild('customRequestId').equalTo(request.requestId);
-              final snapshot = await query.get();
-              if (snapshot.exists && snapshot.value != null) {
-                final bookingsData = Map<String, dynamic>.from(snapshot.value as Map);
-                final bookingId = bookingsData.keys.first; // Get the first (and only) booking ID
-                 if (mounted) {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => BookingDetailPage(
-                      bookingId: bookingId,
-                      userRole: 'Homeowner',
-                    )));
-                 }
-              } else {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Could not find the final booking.")));
-              }
-              break;
-            
             case 'Pending':
             case 'Quoted':
             case 'Declined':
@@ -224,7 +207,6 @@ class _MyCustomRequestsPageState extends State<MyCustomRequestsPage> with Single
                 MaterialPageRoute(builder: (_) => CustomRequestStatusPage(requestId: request.requestId)),
               );
               break;
-            
             default:
               // Do nothing for other statuses
               break;

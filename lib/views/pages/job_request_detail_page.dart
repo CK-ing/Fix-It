@@ -1,4 +1,5 @@
 import 'package:fixit_app_a186687/models/custom_request.dart';
+import 'package:fixit_app_a186687/views/pages/bookings_detail_page.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -46,7 +47,6 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
       
       await _dbRef.child('custom_requests/${widget.requestViewModel.request.requestId}').update(updateData);
 
-      // Send notification to homeowner
       final actorSnapshot = await _dbRef.child('users/${FirebaseAuth.instance.currentUser!.uid}/name').get();
       final handymanName = actorSnapshot.value as String? ?? 'Your handyman';
       String title = '';
@@ -65,7 +65,7 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
         'notificationId': notificationRef.key,
         'title': title,
         'body': body,
-        'bookingId': widget.requestViewModel.request.requestId, // Link to the custom request
+        'bookingId': widget.requestViewModel.request.requestId,
         'type': 'custom_request_update',
         'isRead': false,
         'createdAt': ServerValue.timestamp,
@@ -76,7 +76,7 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
           content: Text('Request has been $status.'),
           backgroundColor: Colors.green,
         ));
-        Navigator.of(context).pop(); // Go back to the list page
+        Navigator.of(context).pop();
       }
 
     } catch (e) {
@@ -94,7 +94,7 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
 
   void _showSubmitQuoteDialog() {
     _priceController.clear();
-    _selectedPriceType = 'Fixed'; // Reset to default
+    _selectedPriceType = 'Fixed';
 
     showDialog(
       context: context,
@@ -150,7 +150,7 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
                         'quotePrice': double.parse(_priceController.text.trim()),
                         'quotePriceType': _selectedPriceType,
                       };
-                      Navigator.of(context).pop(); // Close dialog
+                      Navigator.of(context).pop();
                       _updateRequestStatus('Quoted', quoteData: quoteData);
                     }
                   },
@@ -168,25 +168,25 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Job Request Details'),
+        title: Text(widget.requestViewModel.request.title),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          _buildHomeownerCard(),
-          const SizedBox(height: 24),
-          _buildSectionTitle('Job Title'),
-          Text(widget.requestViewModel.request.title, style: const TextStyle(fontSize: 16, height: 1.5)),
+          _buildStatusSpecificContent(), // Dynamic content based on status
           const SizedBox(height: 24),
           _buildSectionTitle('Job Description'),
+          const SizedBox(height: 8),
           Text(widget.requestViewModel.request.description, style: const TextStyle(fontSize: 16, height: 1.5)),
           const SizedBox(height: 24),
           if(widget.requestViewModel.request.photoUrls.isNotEmpty) ...[
             _buildSectionTitle('Photos from Customer'),
+            const SizedBox(height: 16),
             _buildPhotoGallery(),
             const SizedBox(height: 24),
           ],
           _buildSectionTitle('Customer\'s Budget'),
+          const SizedBox(height: 8),
           Text(
             widget.requestViewModel.request.budgetRange,
             style: const TextStyle(fontSize: 16, height: 1.5),
@@ -197,20 +197,55 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
     );
   }
 
+  // --- NEW: This widget conditionally builds the top card based on status ---
+  Widget _buildStatusSpecificContent() {
+    final request = widget.requestViewModel.request;
+    switch (request.status) {
+      case 'Pending':
+        return _buildHomeownerCard();
+      case 'Quoted':
+        return _buildStatusInfoCard(
+          icon: Icons.request_quote_outlined,
+          color: Colors.blue,
+          title: 'Quote Sent',
+          subtitle: 'You have sent a quote of RM${request.quotePrice?.toStringAsFixed(2)}. Waiting for the customer to respond.',
+        );
+      case 'Declined':
+      case 'DeclinedByHomeowner':
+      case 'Cancelled':
+         return _buildStatusInfoCard(
+          icon: Icons.cancel_outlined,
+          color: Colors.red,
+          title: 'Request Closed',
+          subtitle: 'This request was declined or cancelled and requires no further action.',
+        );
+      case 'Booked':
+        return _buildStatusInfoCard(
+          icon: Icons.check_circle_outline_rounded,
+          color: Colors.green,
+          title: 'Request Booked!',
+          subtitle: 'The customer has accepted your quote and this request has been converted to a booking.',
+        );
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
   Widget _buildHomeownerCard() {
     final homeownerName = widget.requestViewModel.homeownerName;
     final homeownerImageUrl = widget.requestViewModel.homeownerImageUrl;
     final homeownerId = widget.requestViewModel.request.homeownerId;
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    // Get the budget range from the view model
+    final budgetRange = widget.requestViewModel.request.budgetRange;
 
     return Card(
       elevation: 2,
-      clipBehavior: Clip.antiAlias, // Ensures the InkWell ripple respects the border radius
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: InkWell( // <-- WRAPPED WITH INKWELL
+      child: InkWell(
         onTap: () {
           if (currentUserId == null) return;
-          // Navigate to chat page
           List<String> ids = [currentUserId, homeownerId];
           ids.sort();
           String chatRoomId = ids.join('_');
@@ -225,132 +260,206 @@ class _JobRequestDetailPageState extends State<JobRequestDetailPage> {
           );
         },
         child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
+          padding: const EdgeInsets.all(16.0),
+          // --- MODIFIED: Wrapped content in a Column to match the quote card design ---
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundImage: homeownerImageUrl != null ? NetworkImage(homeownerImageUrl) : null,
-                child: homeownerImageUrl == null ? const Icon(Icons.person) : null,
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  radius: 24,
+                  backgroundImage: homeownerImageUrl != null ? NetworkImage(homeownerImageUrl) : null,
+                  child: homeownerImageUrl == null ? const Icon(Icons.person, size: 24) : null,
+                ),
+                title: Text(homeownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                subtitle: const Text("sent you a request"),
+                trailing: const Icon(Icons.chat_bubble_outline, color: Colors.grey),
               ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("REQUEST FROM", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  Text(homeownerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                ],
+              const Divider(height: 24),
+              Text(
+                "Customer's Budget",
+                style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.w500),
               ),
-              const Spacer(),
-              const Icon(Icons.chat_bubble_outline, color: Colors.grey),
+              const SizedBox(height: 8),
+              Text(
+                budgetRange,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 28),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "This is the customer's budget. Your quote should be based on your professional assessment of the job.",
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
             ],
           ),
         ),
       ),
     );
   }
-
-  Widget _buildSectionTitle(String title) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+  
+  Widget _buildStatusInfoCard({required IconData icon, required Color color, required String title, required String subtitle}) {
+    return Card(
+      elevation: 2,
+      color: color.withOpacity(0.05),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: color.withOpacity(0.3))
       ),
-    );
-  }
-
-  Widget _buildPhotoGallery() {
-    return SizedBox(
-      height: 100,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: widget.requestViewModel.request.photoUrls.length,
-        itemBuilder: (context, index) {
-          final imageUrl = widget.requestViewModel.request.photoUrls[index];
-          // --- WRAPPED THE IMAGE WITH GESTUREDETECTOR ---
-          return GestureDetector(
-            onTap: () => _viewPhotoFullScreen(imageUrl),
-            child: Padding(
-              padding: const EdgeInsets.only(right: 8.0),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  imageUrl,
-                  width: 100,
-                  height: 100,
-                  fit: BoxFit.cover,
-                  errorBuilder: (c, o, s) => Container(
-                    width: 100, height: 100, color: Colors.grey[200],
-                    child: const Icon(Icons.error, color: Colors.grey),
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _viewPhotoFullScreen(String imageUrl) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.close, color: Colors.white),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
-          // --- MODIFIED: Removed the Center widget ---
-          body: InteractiveViewer(
-            panEnabled: true,
-            boundaryMargin: const EdgeInsets.all(20),
-            minScale: 0.5,
-            maxScale: 4,
-            child: Center( // We can add Center back inside the viewer to center the image itself
-              child: Image.network(imageUrl),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Row(
           children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: _isProcessing ? null : () => _updateRequestStatus('Declined'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text('Decline'),
-              ),
-            ),
+            Icon(icon, color: color, size: 32),
             const SizedBox(width: 16),
             Expanded(
-              child: ElevatedButton(
-                onPressed: _isProcessing ? null : _showSubmitQuoteDialog,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: const Text('Submit Quote'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: TextStyle(color: Colors.grey[700], height: 1.4)),
+                ],
               ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+    );
+  }
+
+  Widget _buildPhotoGallery() {  
+    return SizedBox( 
+      height: 100, 
+      child: ListView.builder( 
+        scrollDirection: Axis.horizontal, 
+        itemCount: widget.requestViewModel.request.photoUrls.length, 
+        itemBuilder: (context, index) { 
+          final imageUrl = widget.requestViewModel.request.photoUrls[index]; 
+          return GestureDetector( 
+            onTap: () => _viewPhotoFullScreen(imageUrl), 
+            child: Padding( 
+              padding: const EdgeInsets.only(right: 8.0), 
+              child: ClipRRect( borderRadius: 
+              BorderRadius.circular(8), 
+              child: Image.network( 
+                imageUrl, 
+                width: 100, 
+                height: 100, 
+                fit: BoxFit.cover, 
+                errorBuilder: (c, o, s) => Container( 
+                  width: 100, 
+                  height: 100, 
+                  color: Colors.grey[200], 
+                  child: const Icon(
+                    Icons.error, color: Colors.grey
+                    ), 
+                  ), 
+                ), 
+              ), 
+            ), 
+          ); 
+        }, 
+      ), 
+    ); 
+  }
+  
+  void _viewPhotoFullScreen(String imageUrl) {  
+    Navigator.of(context).push( 
+      MaterialPageRoute( 
+        builder: (context) => Scaffold( 
+          backgroundColor: Colors.black, 
+          appBar: AppBar( 
+            backgroundColor: Colors.transparent, 
+            elevation: 0, 
+            leading: IconButton( 
+              icon: const Icon(Icons.close, color: Colors.white), 
+              onPressed: () => Navigator.of(context).pop(), 
+              ), 
+            ), 
+            body: Center( child: InteractiveViewer( 
+              panEnabled: true, 
+              boundaryMargin: const EdgeInsets.all(20), 
+              minScale: 0.5, 
+              maxScale: 4, 
+              child: Center(
+              child: Image.network(imageUrl),
+            ),
+            ), 
+            ), 
+            ), 
+            ), 
+            ); 
+            }
+
+  Widget? _buildActionButtons() {
+    final status = widget.requestViewModel.request.status;
+    switch (status) {
+      case 'Pending':
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isProcessing ? null : () => _updateRequestStatus('Declined'),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red, side: const BorderSide(color: Colors.red), padding: const EdgeInsets.symmetric(vertical: 14)),
+                    child: const Text('Decline'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isProcessing ? null : _showSubmitQuoteDialog,
+                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                    child: const Text('Submit Quote'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      
+      case 'Booked':
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('View Booking'),
+                onPressed: () async {
+                  final query = _dbRef.child('bookings').orderByChild('customRequestId').equalTo(widget.requestViewModel.request.requestId);
+                  final snapshot = await query.get();
+                  if (snapshot.exists && snapshot.value != null) {
+                    final bookingsData = Map<String, dynamic>.from(snapshot.value as Map);
+                    final bookingId = bookingsData.keys.first;
+                    if (mounted) {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => BookingDetailPage(
+                        bookingId: bookingId,
+                        userRole: 'Handyman',
+                      )));
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+              ),
+            ),
+          ),
+        );
+
+      default:
+        // For Quoted, Declined, Cancelled, etc., show no action buttons
+        return null;
+    }
   }
 }

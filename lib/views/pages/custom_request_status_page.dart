@@ -222,6 +222,13 @@ class _CustomRequestStatusPageState extends State<CustomRequestStatusPage> {
           const SizedBox(height: 16),
           _buildPhotoGallery(),
         ],
+        const SizedBox(height: 24),
+      _buildSectionTitle('Your Submitted Budget'),
+      const SizedBox(height: 8),
+      Text(
+        _requestData!.budgetRange,
+        style: const TextStyle(fontSize: 16, height: 1.5),
+      ),
       ],
     );
   }
