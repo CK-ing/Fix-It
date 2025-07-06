@@ -7,6 +7,7 @@ import 'favourites_page.dart';
 import 'job_requests_page.dart';
 import 'my_custom_requests_page.dart';
 import 'notifications_page.dart';
+import 'statistics_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -77,7 +78,15 @@ class _ProfilePageState extends State<ProfilePage> {
         context,
         MaterialPageRoute(builder: (_) => const NotificationsPage()),
       );
-      } else if (title == 'My Custom Requests') {
+      }
+      else if (title == 'Statistics') {
+  // This will only be tapped by Handymen
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const StatisticsPage()),
+  );
+}
+       else if (title == 'My Custom Requests') {
   // For Homeowner
   Navigator.push(
     context,
