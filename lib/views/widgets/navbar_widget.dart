@@ -2,9 +2,14 @@ import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:flutter/material.dart';
 
 class NavbarWidget extends StatelessWidget {
-  final String userRole; // This might not be needed anymore if the 3rd item is always Chat
+  final String userRole;
+  final bool hasUnreadChats;
 
-  const NavbarWidget({super.key, required this.userRole});
+  const NavbarWidget({
+    super.key, 
+    required this.userRole,
+    required this.hasUnreadChats,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -16,25 +21,41 @@ class NavbarWidget extends StatelessWidget {
           onDestinationSelected: (int value) {
             selectedPageNotifier.value = value;
           },
-          destinations: const [ // Made const as role is no longer needed here
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined), // Using outlined icons
-              selectedIcon: Icon(Icons.home), // Filled icon when selected
+          destinations: [
+            const NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
               label: 'Home',
             ),
-            NavigationDestination(
-              icon: Icon(Icons.list_alt_outlined), // Changed icon for bookings
+            const NavigationDestination(
+              icon: Icon(Icons.list_alt_outlined),
               selectedIcon: Icon(Icons.list_alt),
               label: 'Bookings',
             ),
-            // *** MODIFIED: Third item is now Chat ***
             NavigationDestination(
-              icon: Icon(Icons.chat_bubble_outline), // Chat icon
-              selectedIcon: Icon(Icons.chat_bubble),
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.chat_bubble_outline),
+                  if (hasUnreadChats)
+                    Positioned(
+                      top: -2,
+                      right: -4,
+                      child: Container(
+                        width: 10,
+                        height: 10,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              selectedIcon: const Icon(Icons.chat_bubble),
               label: 'Chat',
             ),
-            // *** END OF MODIFICATION ***
-            NavigationDestination(
+            const NavigationDestination(
               icon: Icon(Icons.person_outline),
               selectedIcon: Icon(Icons.person),
               label: 'Profile',

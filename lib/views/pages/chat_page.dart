@@ -1,15 +1,17 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
-// *** Import RTDB ***
 import 'package:firebase_database/firebase_database.dart';
-import 'package:intl/intl.dart'; // For formatting timestamps
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../../models/chat_message.dart';
 
 class ChatPage extends StatefulWidget {
-  final String chatRoomId; // Combined & sorted UIDs (e.g., uid1_uid2)
+  final String chatRoomId;
   final String otherUserId;
   final String otherUserName;
-  final String? otherUserImageUrl; // Optional image URL
+  final String? otherUserImageUrl;
 
   const ChatPage({
     required this.chatRoomId,
@@ -24,244 +26,372 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  // *** Use RTDB Reference ***
-  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
+  final GlobalKey _unreadChipKey = GlobalKey();
   User? _currentUser;
-  bool _isSending = false;
-  bool _initialScrollDone = false;
-  StreamSubscription? _messageSubscription; // To manage the RTDB listener
+  int? _unreadStartIndex;
+
+  StreamSubscription? _messagesSubscription;
+  List<ChatMessage> _messages = [];
 
   @override
   void initState() {
     super.initState();
     _currentUser = _auth.currentUser;
-    // We will set up the stream listener within the StreamBuilder equivalent for RTDB
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(jump: true));
+    if (_currentUser != null) {
+      _listenForMessages();
+    }
   }
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
-    _messageSubscription?.cancel(); // Cancel RTDB listener
+    _messagesSubscription?.cancel();
     super.dispose();
   }
 
-  // --- Send Message Logic (Using RTDB) ---
-  Future<void> _sendMessage() async {
+  void _listenForMessages() {
+    final messagesRef = _dbRef
+        .child('chatMessages/${widget.chatRoomId}')
+        .orderByChild('timestamp');
+    _messagesSubscription = messagesRef.onValue.listen((event) {
+      if (!mounted) return;
+      final List<ChatMessage> loadedMessages = [];
+      if (event.snapshot.exists) {
+        for (final child in event.snapshot.children) {
+          final messageData =
+              Map<String, dynamic>.from(child.value as Map);
+          loadedMessages.add(ChatMessage.fromMap(child.key!, messageData));
+        }
+        loadedMessages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      }
+      setState(() {
+        _messages = loadedMessages;
+      });
+      _scrollToUnreadIfAny();
+    },
+      onError: (Object error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error loading messages.')),
+          );
+        }
+      },
+    );
+  }
+
+  Future<int?> _getUnreadCount() async {
+    if (_currentUser == null) return null;
+
+    final snapshot = await _dbRef
+        .child('chats/${widget.chatRoomId}/unreadCount/${_currentUser!.uid}')
+        .get();
+
+    if (snapshot.exists) {
+      final count = snapshot.value;
+      if (count is int) return count;
+    }
+    return null;
+  }
+
+  void _scrollToUnreadIfAny() async {
+    final unreadCount = await _getUnreadCount();
+    if (!mounted) return;
+
+    if (unreadCount != null && unreadCount > 0) {
+      setState(() {
+      _unreadStartIndex = _messages.length - unreadCount;
+      });
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _unreadChipKey.currentContext;
+      if (context != null) {
+        Scrollable.ensureVisible( //use _scrollController.animateTo and offset manually for unread count>16
+          context,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      } else {
+      // fallback: scroll to bottom
+      if (_scrollController.hasClients) {
+        _scrollController.jumpTo(_scrollController.position.minScrollExtent);
+      }
+    }
+  });
+      _markMessagesAsRead();
+    } else {
+      // force jump to bottom if no unread
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.minScrollExtent);
+        }
+      });
+    }
+  }
+
+  void _markMessagesAsRead() {
+    if (_currentUser == null) return;
+    _dbRef
+        .child('chats/${widget.chatRoomId}/unreadCount/${_currentUser!.uid}')
+        .set(0);
+  }
+
+  void _sendMessage() async {
     final text = _messageController.text.trim();
-    if (text.isEmpty || _currentUser == null || _isSending) {
-      return;
-    }
+    if (text.isEmpty || _currentUser == null) return;
 
-    setState(() { _isSending = true; });
-    final messageTextToSend = text;
-    _messageController.clear();
+    final messageRef =
+        _dbRef.child('chatMessages/${widget.chatRoomId}').push();
+    final messageId = messageRef.key;
+    if (messageId == null) return;
 
-    // *** Use RTDB ServerValue.timestamp ***
-    final messageTimestamp = ServerValue.timestamp;
-
-    // Reference the specific chat's messages node
-    final messagesRef = _dbRef.child('chatMessages').child(widget.chatRoomId);
-    // Generate a unique key for the new message using push()
-    final newMessageRef = messagesRef.push();
-    final messageId = newMessageRef.key; // Get the unique key
-
-    if (messageId == null) {
-       print("Error: Could not generate message ID");
-       setState(() { _isSending = false; });
-       // Restore text?
-       _messageController.text = messageTextToSend;
-       return;
-    }
-
-    // Prepare message data
     final messageData = {
       'messageId': messageId,
       'senderId': _currentUser!.uid,
       'receiverId': widget.otherUserId,
-      'text': messageTextToSend,
-      'timestamp': messageTimestamp, // Use RTDB timestamp placeholder
+      'text': text,
+      'timestamp': ServerValue.timestamp,
     };
 
-    // Prepare last message data for chat room document
-    final lastMessageData = {
-      'text': messageTextToSend,
-      'senderId': _currentUser!.uid,
-      'timestamp': messageTimestamp,
+    Map<String, dynamic> atomicUpdate = {
+      'chatMessages/${widget.chatRoomId}/$messageId': messageData,
+      'chats/${widget.chatRoomId}/lastMessage/text': text,
+      'chats/${widget.chatRoomId}/lastMessage/senderId': _currentUser!.uid,
+      'chats/${widget.chatRoomId}/lastMessage/timestamp': ServerValue.timestamp,
+      'chats/${widget.chatRoomId}/lastUpdatedAt': ServerValue.timestamp,
+      'chats/${widget.chatRoomId}/unreadCount/${widget.otherUserId}':ServerValue.increment(1),
+      'chats/${widget.chatRoomId}/unreadCount/${_currentUser!.uid}': 0, // sender has no unread
+      'chats/${widget.chatRoomId}/users/${_currentUser!.uid}': true,
+      'chats/${widget.chatRoomId}/users/${widget.otherUserId}': true,
     };
-
-    // Reference the parent chat metadata node
-    final chatRef = _dbRef.child('chats').child(widget.chatRoomId);
 
     try {
-      // 1. Set the new message data using the generated key
-      await newMessageRef.set(messageData);
-
-      // 2. Update the parent chat document's metadata
-      // Ensure 'users' map exists - ideally set when chat is first initiated
-      // Using update is generally safer than set for metadata
-      await chatRef.update({
-        'lastMessage': lastMessageData,
-        'lastUpdatedAt': messageTimestamp,
-        'users/${_currentUser!.uid}': true, // Ensure users map exists/is updated
-        'users/${widget.otherUserId}': true,
+      await _dbRef.root.update(atomicUpdate);
+      _messageController.clear();
+      // jump to bottom immediately after sending
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.minScrollExtent);
+        }
       });
-
-      print("Message sent successfully to RTDB!");
-      _scrollToBottom();
-
     } catch (e) {
-      print("Error sending message to RTDB: $e");
-      // Restore text field content if sending failed
+      print("Error sending message: $e");
       if (mounted) {
-          _messageController.text = messageTextToSend;
-          ScaffoldMessenger.of(context).showSnackBar(
-             SnackBar(content: Text('Error sending message: ${e.toString()}'), backgroundColor: Colors.red)
-          );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to send message.')),
+        );
       }
-    } finally {
-       if (mounted) {
-          setState(() { _isSending = false; });
-       }
     }
   }
 
-  // --- Scroll Logic ---
-  void _scrollToBottom({bool jump = false}) { /* ... remains same ... */ if (_scrollController.hasClients) { Future.delayed(const Duration(milliseconds: 100), () { if (mounted && _scrollController.hasClients) { if (jump) { _scrollController.jumpTo(_scrollController.position.minScrollExtent); } else { _scrollController.animateTo( _scrollController.position.minScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeOut,); } } }); } }
+  String _formatDateSeparator(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final dateToFormat =
+        DateTime(date.year, date.month, date.day);
+
+    if (dateToFormat == today) return 'Today';
+    if (dateToFormat == yesterday) return 'Yesterday';
+    return DateFormat('d MMMM yyyy').format(date);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar( /* ... AppBar remains same ... */ title: Row( children: [ CircleAvatar( radius: 18, backgroundColor: Colors.grey[300], backgroundImage: (widget.otherUserImageUrl != null && widget.otherUserImageUrl!.isNotEmpty) ? NetworkImage(widget.otherUserImageUrl!) : null, child: (widget.otherUserImageUrl == null || widget.otherUserImageUrl!.isEmpty) ? const Icon(Icons.person, size: 20, color: Colors.grey) : null,), const SizedBox(width: 10), Text(widget.otherUserName),],), elevation: 1.0,),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundImage: widget.otherUserImageUrl != null
+                  ? NetworkImage(widget.otherUserImageUrl!)
+                  : null,
+              child: widget.otherUserImageUrl == null
+                  ? const Icon(Icons.person, size: 18)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Text(widget.otherUserName),
+          ],
+        ),
+      ),
       body: Column(
         children: [
-          Expanded( child: _buildMessagesList(),),
-          _buildMessageInput(), // Wrapped in SafeArea
+          Expanded(
+            child: _messages.isEmpty
+                ? const Center(
+                    child: Text(
+                        'No messages yet. Start the conversation!'))
+                : ListView.builder(
+                    reverse: true, // latest message appears at bottom
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(8.0),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final message = _messages[_messages.length - 1 - index];
+                      final messageIndexInOriginalList = _messages.length - 1 - index;
+                      final isMe = message.senderId == _currentUser!.uid;
+
+                      bool showDateSeparator = false;
+                      if (index == _messages.length - 1) {
+                        showDateSeparator = true;
+                      } else {
+                        final previousMessage =
+                            _messages[_messages.length - index - 2];
+                        final previousDate = DateTime(
+                            previousMessage.timestamp.year,
+                            previousMessage.timestamp.month,
+                            previousMessage.timestamp.day);
+                        final currentDate = DateTime(
+                            message.timestamp.year,
+                            message.timestamp.month,
+                            message.timestamp.day);
+                            if (currentDate.isAfter(previousDate)) {
+                            showDateSeparator = true;
+                          }
+                      }
+                      final List<Widget> children = [];
+                      if (showDateSeparator) {
+                        children.add(_buildDateSeparator(message.timestamp));
+                      }
+
+                      if (_unreadStartIndex != null &&
+                          messageIndexInOriginalList == _unreadStartIndex) {
+                        children.add(_buildUnreadChip());
+                      }
+
+                      children.add(_buildMessageBubble(message, isMe));
+
+                      return Column(children: children);
+                    },
+                  ),
+          ),
+          _buildMessageComposer(),
         ],
       ),
     );
   }
 
-  // --- Widget Builders ---
-
-  // *** MODIFIED: Builds the list of messages using RTDB Stream ***
-  Widget _buildMessagesList() {
-    if (_currentUser == null) return const Center(child: Text("Not logged in."));
-
-    // Query RTDB messages node, order by timestamp
-    // Note: RTDB ordering requires data to be structured correctly or indexing rules
-    // For simplicity here, we fetch all and sort client-side.
-    // For performance on large chats, consider server-side filtering/pagination or structuring data differently.
-    Query messagesQuery = _dbRef
-        .child('chatMessages')
-        .child(widget.chatRoomId)
-        .orderByChild('timestamp'); // Order by timestamp
-
-    return StreamBuilder<DatabaseEvent>(
-      stream: messagesQuery.onValue, // Listen to value changes
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting && !_initialScrollDone) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error loading messages: ${snapshot.error}'));
-        }
-        if (!snapshot.hasData || snapshot.data?.snapshot.value == null) {
-          // Check if snapshot.data or snapshot.data.snapshot is null
-           if (snapshot.connectionState == ConnectionState.active && !_initialScrollDone) {
-              // If connected but no data, means empty chat
-              _initialScrollDone = true; // Mark initial scroll check done
-              return const Center(child: Text('Say hello!'));
-           } else if (!_initialScrollDone) {
-              // Still waiting or error before first data
-              return const Center(child: CircularProgressIndicator());
-           } else {
-              // Already loaded once, now it's empty
-               return const Center(child: Text('Say hello!'));
-           }
-        }
-
-        // Data received, process it
-        final messagesData = Map<String, dynamic>.from(snapshot.data!.snapshot.value as Map);
-        // Convert map to a list of messages, adding the key as messageId
-        final messagesList = messagesData.entries.map((entry) {
-            final messageContent = Map<String, dynamic>.from(entry.value as Map);
-            messageContent['messageId'] = entry.key; // Add the key/ID to the map
-            return messageContent;
-        }).toList();
-
-        // Sort messages by timestamp (client-side as RTDB order might not be guaranteed perfectly here)
-        messagesList.sort((a, b) {
-            final timestampA = a['timestamp'] as int? ?? 0;
-            final timestampB = b['timestamp'] as int? ?? 0;
-            return timestampA.compareTo(timestampB); // Ascending for normal view
-        });
-
-        // Scroll to bottom after first load
-        if (!_initialScrollDone) {
-           WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(jump: true));
-           _initialScrollDone = true;
-        }
-
-        return ListView.builder(
-          controller: _scrollController,
-          reverse: true, // Display messages from bottom to top
-          padding: const EdgeInsets.symmetric(vertical: 10.0),
-          itemCount: messagesList.length,
-          itemBuilder: (context, index) {
-            // Access messages in reverse order because ListView is reversed
-            final messageData = messagesList[messagesList.length - 1 - index];
-            return _buildMessageBubble(messageData);
-          },
-        );
-      },
-    );
-  }
-  // *** END OF MODIFICATION ***
-
-  // *** MODIFIED: Builds a single message bubble (Handles int timestamp) ***
-  Widget _buildMessageBubble(Map<String, dynamic> messageData) {
-    if (_currentUser == null) return const SizedBox.shrink();
-
-    final bool isMe = messageData['senderId'] == _currentUser!.uid;
-    final String messageText = messageData['text'] ?? '';
-    // *** Timestamp from RTDB is likely an integer (milliseconds) ***
-    final int? timestampMillis = messageData['timestamp'] as int?;
-    final String formattedTime = timestampMillis != null
-        ? DateFormat.jm().format(DateTime.fromMillisecondsSinceEpoch(timestampMillis))
-        : '';
-
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-        margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
-        decoration: BoxDecoration(
-          color: isMe ? Theme.of(context).primaryColor : Colors.grey[300],
-          borderRadius: BorderRadius.only( topLeft: const Radius.circular(15.0), topRight: const Radius.circular(15.0), bottomLeft: isMe ? const Radius.circular(15.0) : const Radius.circular(0), bottomRight: isMe ? const Radius.circular(0) : const Radius.circular(15.0),),
-        ),
-        child: Column(
-           crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-           mainAxisSize: MainAxisSize.min,
-           children: [
-              Text( messageText, style: TextStyle(color: isMe ? Colors.white : Colors.black87),),
-              if (formattedTime.isNotEmpty) ...[ const SizedBox(height: 3), Text( formattedTime, style: TextStyle( fontSize: 10, color: isMe ? Colors.white70 : Colors.black54,),),],
-           ],
+  Widget _buildDateSeparator(DateTime date) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12.0),
+      child: Center(
+        child: Chip(
+          label: Text(
+            _formatDateSeparator(date),
+            style: TextStyle(color: Colors.grey[600]),
+          ),
+          backgroundColor: Colors.grey[200],
         ),
       ),
     );
   }
-  // *** END OF MODIFICATION ***
 
-  // Builds the message input wrapped in SafeArea
-  Widget _buildMessageInput() {
-    // ... (Input UI remains the same, uses _sendMessage which is now RTDB) ...
-    return SafeArea( bottom: true, top: false, child: Container( padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0), decoration: BoxDecoration( color: Theme.of(context).cardColor, boxShadow: [ BoxShadow( offset: const Offset(0, -1), blurRadius: 4, color: Colors.black.withOpacity(0.05),)],), child: Row( children: [ Expanded( child: TextField( controller: _messageController, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration( hintText: 'Type a message...', border: InputBorder.none, filled: true, fillColor: Colors.black12, contentPadding: EdgeInsets.symmetric(vertical: 10.0, horizontal: 15.0), isDense: true, enabledBorder: OutlineInputBorder( borderSide: BorderSide.none, borderRadius: BorderRadius.all(Radius.circular(25.0))), focusedBorder: OutlineInputBorder( borderSide: BorderSide.none, borderRadius: BorderRadius.all(Radius.circular(25.0))),), onSubmitted: (_) => _messageController.text.trim().isNotEmpty ? _sendMessage() : null, onChanged: (text) => setState(() {}),),), const SizedBox(width: 8), _isSending ? const Padding( padding: EdgeInsets.all(12.0), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))) : IconButton( icon: const Icon(Icons.send), color: Theme.of(context).primaryColor, onPressed: _messageController.text.trim().isEmpty ? null : _sendMessage,),],),),);
+  Widget _buildUnreadChip() {
+  return Padding(
+    key: _unreadChipKey,
+    padding: const EdgeInsets.symmetric(vertical: 8.0),
+    child: Center(
+      child: Chip(
+        label: Text(
+          'Unread Messages',
+          style: TextStyle(color: Colors.white),
+        ),
+        backgroundColor: Colors.redAccent,
+      ),
+    ),
+  );
+}
+
+  Widget _buildMessageBubble(ChatMessage message, bool isMe) {
+    return Align(
+      alignment:
+          isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Card(
+        color: isMe
+            ? Theme.of(context).primaryColor
+            : Theme.of(context).cardColor,
+        elevation: 1,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(12),
+            topRight: const Radius.circular(12),
+            bottomLeft:
+                isMe ? const Radius.circular(12) : const Radius.circular(0),
+            bottomRight:
+                isMe ? const Radius.circular(0) : const Radius.circular(12),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 12, vertical: 8),
+          child: Column(
+            crossAxisAlignment: isMe
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              Text(
+                message.text,
+                style: TextStyle(
+                    color: isMe ? Colors.white : null),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                DateFormat.jm().format(message.timestamp),
+                style: TextStyle(
+                    fontSize: 10,
+                    color: isMe
+                        ? Colors.white70
+                        : Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageComposer() {
+    return Container(
+      padding: const EdgeInsets.all(8.0),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 5,
+            offset: const Offset(0, -2),
+          )
+        ],
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                textCapitalization:
+                    TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Type a message...',
+                  border: InputBorder.none,
+                ),
+                onSubmitted: (_) => _sendMessage(),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.send,
+                  color: Theme.of(context).primaryColor),
+              onPressed: _sendMessage,
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

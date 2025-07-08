@@ -55,12 +55,8 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _logout(BuildContext context) async {
+    // Simply sign out. The authStateChanges listener in WidgetTree will handle the navigation.
     await FirebaseAuth.instance.signOut();
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const WelcomeScreen()),
-      (route) => false,
-    );
   }
 
   void _onListTileTap(String title) {

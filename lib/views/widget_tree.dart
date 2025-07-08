@@ -38,30 +38,32 @@ class _WidgetTreeState extends State<WidgetTree> {
   final DatabaseReference _db = FirebaseDatabase.instance.ref();
   User? _currentUser;
 
-  // Drawer State
   String _drawerUserName = "User";
   String _drawerUserEmail = "";
   String? _drawerUserPhotoUrl;
   bool _isLoadingDrawerData = true;
 
-  // --- NEW: Notification State ---
   bool _hasUnreadNotifications = false;
+  bool _hasUnreadChats = false;
   StreamSubscription? _notificationsSubscription;
+  StreamSubscription? _chatsSubscription;
+  StreamSubscription? _authSubscription;
 
   @override
   void initState() {
     super.initState();
-    _currentUser = _auth.currentUser; // Get current user once
+    _currentUser = _auth.currentUser; 
     _loadDrawerData();
-    _requestAndSaveToken();
-    // *** NEW: Start listening for notifications for the logged-in user ***
     _listenForUnreadNotifications();
+    _listenForUnreadChats();
+    _listenForAuthStateChanges();
   }
 
   @override
   void dispose() {
-    // *** NEW: Cancel subscription to prevent memory leaks ***
     _notificationsSubscription?.cancel();
+    _chatsSubscription?.cancel();
+    _authSubscription?.cancel();
     super.dispose();
   }
   
@@ -70,8 +72,23 @@ class _WidgetTreeState extends State<WidgetTree> {
       setState(fn);
     }
   }
-
-  // --- NEW: Real-time listener for the notification indicator ---
+  void _listenForAuthStateChanges() {
+    _authSubscription = _auth.authStateChanges().listen((User? user) {
+      if (user == null && mounted) {
+        // User has logged out, navigate to the Welcome Screen and clear all routes.
+        print("Auth state changed: User is null. Navigating to WelcomeScreen.");
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+          (Route<dynamic> route) => false,
+        );
+      }else if (user != null) {
+      // User logged in or restored session
+      print("Auth state changed: User logged in or restored session.");
+      _currentUser = user;  // update cached user
+      _requestAndSaveToken();  //  ensure token saved
+    }
+    });
+  }
   void _listenForUnreadNotifications() {
     if (_currentUser == null) return;
     _notificationsSubscription?.cancel(); // Cancel any old listener
@@ -91,13 +108,41 @@ class _WidgetTreeState extends State<WidgetTree> {
         _hasUnreadNotifications = hasUnread;
       });
     }, onError: (error) {
-      print("Error listening for notifications in WidgetTree: $error");
+      // Gracefully handle permission denied errors on logout
+      print("Chat listener error (likely on logout): $error");
     });
   }
 
-  Future<void> _loadDrawerData() async {
-    final user = _auth.currentUser; if (user == null) { if (mounted) setState(() => _isLoadingDrawerData = false); return; } try { final snapshot = await _db.child('users').child(user.uid).get(); if (mounted && snapshot.exists && snapshot.value != null) { final data = Map<String, dynamic>.from(snapshot.value as Map); setState(() { _drawerUserName = data['name'] ?? user.displayName ?? "User"; _drawerUserEmail = data['email'] ?? user.email ?? ""; _drawerUserPhotoUrl = data['profileImageUrl']; _isLoadingDrawerData = false; }); } else { if (mounted) { setState(() { _drawerUserName = user.displayName ?? "User"; _drawerUserEmail = user.email ?? ""; _drawerUserPhotoUrl = user.photoURL; _isLoadingDrawerData = false; }); } } } catch (e) { print("Error loading drawer data: $e"); if (mounted && user != null) { setState(() { _drawerUserName = user.displayName ?? "User"; _drawerUserEmail = user.email ?? ""; _drawerUserPhotoUrl = user.photoURL; _isLoadingDrawerData = false; }); } else if (mounted) { setState(() => _isLoadingDrawerData = false); } }
+  void _listenForUnreadChats() {
+    if (_currentUser == null) return;
+    final query = _db.child('chats').orderByChild('users/${_currentUser!.uid}').equalTo(true);
+
+    _chatsSubscription = query.onValue.listen((event) {
+      if (!mounted || !event.snapshot.exists) {
+        setStateIfMounted(() => _hasUnreadChats = false);
+        return;
+      }
+      
+      int totalUnread = 0;
+      final chatsData = Map<String, dynamic>.from(event.snapshot.value as Map);
+      
+      for (var chatValue in chatsData.values) {
+        if (chatValue is Map && chatValue['unreadCount'] is Map) {
+          final unreadMap = Map<String, dynamic>.from(chatValue['unreadCount']);
+          totalUnread += (unreadMap[_currentUser!.uid] as int?) ?? 0;
+        }
+      }
+      
+      setStateIfMounted(() {
+        _hasUnreadChats = totalUnread > 0;
+      });
+    },onError: (error) {
+      // Gracefully handle permission denied errors on logout
+      print("Chat listener error (likely on logout): $error");
+    });
   }
+
+  Future<void> _loadDrawerData() async {final user = _auth.currentUser; if (user == null) { if (mounted) setState(() => _isLoadingDrawerData = false); return; } try { final snapshot = await _db.child('users').child(user.uid).get(); if (mounted && snapshot.exists && snapshot.value != null) { final data = Map<String, dynamic>.from(snapshot.value as Map); setState(() { _drawerUserName = data['name'] ?? user.displayName ?? "User"; _drawerUserEmail = data['email'] ?? user.email ?? ""; _drawerUserPhotoUrl = data['profileImageUrl']; _isLoadingDrawerData = false; }); } else { if (mounted) { setState(() { _drawerUserName = user.displayName ?? "User"; _drawerUserEmail = user.email ?? ""; _drawerUserPhotoUrl = user.photoURL; _isLoadingDrawerData = false; }); } } } catch (e) { print("Error loading drawer data: $e"); if (mounted && user != null) { setState(() { _drawerUserName = user.displayName ?? "User"; _drawerUserEmail = user.email ?? ""; _drawerUserPhotoUrl = user.photoURL; _isLoadingDrawerData = false; }); } else if (mounted) { setState(() => _isLoadingDrawerData = false); } }}
   Future<void> _requestAndSaveToken() async { await _requestNotificationPermission(); await _saveDeviceToken(); }
   Future<void> _requestNotificationPermission() async { FirebaseMessaging messaging = FirebaseMessaging.instance; try { NotificationSettings settings = await messaging.requestPermission( alert: true, announcement: false, badge: true, carPlay: false, criticalAlert: false, provisional: false, sound: true,); print('User granted permission: ${settings.authorizationStatus}'); } catch (e) { print('Error requesting notification permission: $e'); } }
   Future<void> _saveDeviceToken() async { final user = _auth.currentUser; if (user == null) return; try { String? fcmToken = await FirebaseMessaging.instance.getToken(); if (fcmToken != null) { print("FCM Token: $fcmToken"); DatabaseReference userRef = _db.child('users').child(user.uid); await userRef.update({'fcmToken': fcmToken}); print("FCM Token saved to database."); FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async { print("FCM Token Refreshed: $newToken"); try { await userRef.update({'fcmToken': newToken}); print("Refreshed FCM Token saved."); } catch (e) { print("Error saving refreshed token: $e"); } }); } else { print("Could not get FCM token."); } } catch (e) { print("Error getting/saving FCM token: $e"); } }
@@ -112,8 +157,6 @@ class _WidgetTreeState extends State<WidgetTree> {
         String getTitle() {
           switch (selectedPage) { case 0: return currentUserRole == 'Handyman' ? 'Dashboard' : 'FixIt'; case 1: return 'Bookings'; case 2: return 'Chat'; case 3: return 'Profile'; default: return 'FixIt'; }
         }
-        
-        // *** MODIFIED: getActions to handle notifications for both roles ***
         List<Widget> getActions() {
           // Settings button on Profile page
           if (selectedPage == 3) {
@@ -175,7 +218,10 @@ class _WidgetTreeState extends State<WidgetTree> {
                 ),
           drawer: (selectedPage == 0) ? _buildDrawer(context, currentUserRole) : null,
           body: getPages(currentUserRole).elementAt(selectedPage),
-          bottomNavigationBar: NavbarWidget(userRole: currentUserRole),
+          bottomNavigationBar: NavbarWidget(
+            userRole: currentUserRole,
+            hasUnreadChats: _hasUnreadChats,
+            ),
         );
       },
     );

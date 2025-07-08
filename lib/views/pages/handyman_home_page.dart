@@ -118,8 +118,8 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
   void _listenToQuickStats() {
     if (_currentUser == null) return;
     final handymanId = _currentUser!.uid;
-
     final pendingQuery = _database.child('bookings').orderByChild('handymanId').equalTo(handymanId);
+    final chatsQuery = _database.child('chats');
 
     _pendingBookingsSubscription?.cancel();
     _pendingBookingsSubscription = pendingQuery.onValue.listen((event) {
@@ -170,6 +170,35 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
       print("Error listening to job requests: $error");
       setStateIfMounted(() { _newJobRequestsCount = 0; });
     });
+
+    chatsQuery.onValue.listen((event) {
+    int unreadTotal = 0;
+
+    if (event.snapshot.exists && event.snapshot.value != null) {
+      final data = Map<String, dynamic>.from(event.snapshot.value as Map);
+      data.forEach((chatId, chatData) {
+        if (chatData is Map) {
+          final users = Map<String, dynamic>.from(chatData['users'] ?? {});
+          if (users.containsKey(handymanId)) {
+            final unreadMap = Map<String, dynamic>.from(chatData['unreadCount'] ?? {});
+            final unread = unreadMap[handymanId];
+            if (unread is int && unread > 0) {
+              unreadTotal += unread;
+            }
+          }
+        }
+      });
+    }
+
+    setStateIfMounted(() {
+      _unreadMessagesCount = unreadTotal;
+    });
+  }, onError: (error) {
+    print("Error listening to chats: $error");
+    setStateIfMounted(() {
+      _unreadMessagesCount = 0;
+    });
+  });
   }
 
   void _onSearchChanged() {
@@ -200,7 +229,13 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
       // We set navigateToPageNotifierIndex to null to prevent the notifier from firing.
       navigateToPageNotifierIndex: null,
     ),
-    QuickStat(icon: Icons.mark_chat_unread_outlined, label: 'Unread\n Messages', value: '0', color: Colors.blue, navigateToPageNotifierIndex: 2),
+    QuickStat(
+      icon: Icons.mark_chat_unread_outlined,
+      label: 'Unread\n Messages',
+      value: _unreadMessagesCount.toString(),
+      color: Colors.blue,
+      navigateToPageNotifierIndex: 2,
+    ),
   ];
 
     return Scaffold(
