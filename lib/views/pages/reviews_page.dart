@@ -107,24 +107,26 @@ class _ReviewsPageState extends State<ReviewsPage> {
       appBar: AppBar(
         title: Text('${widget.reviews.length} Reviews'),
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: _buildNewRatingHeader(recommendationPercentage),
-          ),
-          SliverToBoxAdapter(
-            child: _buildFilterSection(),
-          ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final reviewViewModel = _sortedReviews[index];
-                return _buildReviewListItem(reviewViewModel);
-              },
-              childCount: _sortedReviews.length,
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: _buildNewRatingHeader(recommendationPercentage),
             ),
-          ),
-        ],
+            SliverToBoxAdapter(
+              child: _buildFilterSection(),
+            ),
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final reviewViewModel = _sortedReviews[index];
+                  return _buildReviewListItem(reviewViewModel);
+                },
+                childCount: _sortedReviews.length,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

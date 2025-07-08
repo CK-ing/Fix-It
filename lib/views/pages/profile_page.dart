@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'auth/welcome_screen.dart';
 import 'edit_profile_page.dart';
 import 'favourites_page.dart';
+import 'handyman_reviews_page.dart';
 import 'job_requests_page.dart';
 import 'my_custom_requests_page.dart';
 import 'notifications_page.dart';
@@ -68,46 +69,52 @@ class _ProfilePageState extends State<ProfilePage> {
   context,
   MaterialPageRoute(builder: (_) => const EditProfilePage()),
       ); 
-    } else if (title == 'Favourites') {
+    } else if (title == 'Notifications') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const NotificationsPage()),
+        );
+    }
+     else if (title == 'Favourites') {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const FavouritesPage()),
       );
-    } else if (title == 'Notifications') {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const NotificationsPage()),
-      );
-      }
+    } 
       else if (title == 'Statistics') {
-  // This will only be tapped by Handymen
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const StatisticsPage()),
-  );
-}
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const StatisticsPage()),
+        );
+      }
+      else if (title == 'My Reviews') {
+        // This will only be tapped by Handymen
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const HandymanReviewsPage()),
+        );
+      }
        else if (title == 'My Custom Requests') {
-  // For Homeowner
-  Navigator.push(
-    context,
-    MaterialPageRoute(builder: (_) => const MyCustomRequestsPage()),
-  );
-} else if (title == 'Job Requests') {
-      // For Handyman
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const JobRequestsPage()),
-      );
-    }
-       else if (title == 'Log out') {
-      _logout(context);
-    }
-    else {
-      // Placeholder for other buttons
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$title feature coming soon!'))
-      );
-    }
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const MyCustomRequestsPage()),
+          );
+        } else if (title == 'Job Requests') {
+              // For Handyman
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const JobRequestsPage()),
+              );
+            }
+          else if (title == 'Log out') {
+          _logout(context);
+          }
+          else {
+            // Placeholder for other buttons
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('$title feature coming soon!'))
+            );
+          }
   }
 
   Widget _buildListTile(IconData icon, String title) {
@@ -156,15 +163,16 @@ class _ProfilePageState extends State<ProfilePage> {
 
           _buildSectionTitle('Account'),
           _buildListTile(Icons.person_outline, 'Edit profile'),
-          if (_role == 'Homeowner')
-            _buildListTile(Icons.favorite_border, 'Favourites')
-          else if (_role == 'Handyman')
-            _buildListTile(Icons.bar_chart_outlined, 'Statistics'),
           _buildListTile(Icons.notifications_none, 'Notifications'),
-          if (_role == 'Homeowner')
-            _buildListTile(Icons.assignment_outlined, 'My Custom Requests')
-          else if (_role == 'Handyman')
+          if (_role == 'Homeowner') ...[
+            _buildListTile(Icons.favorite_border, 'Favourites'),
+            _buildListTile(Icons.assignment_outlined, 'My Custom Requests'),
+          ]
+          else if (_role == 'Handyman') ...[
+            _buildListTile(Icons.bar_chart_outlined, 'Statistics'),
+            _buildListTile(Icons.reviews_outlined, 'My Reviews'),
             _buildListTile(Icons.post_add_outlined, 'Job Requests'),
+          ],
 
           const SizedBox(height: 20),
           _buildSectionTitle('Support & About'),
