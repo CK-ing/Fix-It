@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 
@@ -36,6 +40,7 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
   final List<File> _imageFiles = [];
   String? _selectedBudgetRange;
   bool _isSubmitting = false;
+  bool _isAnalyzing = false;
 
   final List<String> _budgetRanges = [
     'Below RM100',
@@ -47,6 +52,7 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
 
   @override
   void dispose() {
+    _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
@@ -82,15 +88,92 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
     });
   }
 
-  Future<void> _submitRequest() async {
-    if (!_formKey.currentState!.validate()) {
+  Future<void> _analyzeImageWithAI() async {
+    if (_imageFiles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please upload a photo first.')));
       return;
     }
+    setState(() => _isAnalyzing = true);
 
+    try {
+      // 1. Convert the image to a Base64 string
+      final imageBytes = await _imageFiles.first.readAsBytes();
+      final base64Image = base64Encode(imageBytes);
+
+      // 2. Construct the prompt for the Gemini API
+      final apiKey = dotenv.env['GEMINI_API_KEY'] ?? "API_KEY_NOT_FOUND";
+      final apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey';
+      
+      final systemPrompt = """
+        You are an expert home repair assistant.
+        Your task is to analyze the attached image of a home maintenance or repair issue.
+        Based on the image, suggest a short, 3–5 words JOB TITLE and a brief, one-sentence DESCRIPTION of the problem.
+        Respond ONLY with a valid JSON object containing two keys: "title" and "description".
+        For example: {"title": "Leaky Pipe Under Sink", "description": "There appears to be a water leak from the U-bend pipe under the kitchen sink."}
+      """;
+
+      // 3. Make the API call
+      final uri = Uri.parse(apiUrl);
+      final response = await _postWithRetries(uri, {
+        'contents': [{
+          'parts': [
+            {'text': systemPrompt},
+            {'inline_data': {'mime_type': 'image/jpeg', 'data': base64Image}}
+          ]
+        }]
+      });
+
+      if (response == null) {
+        throw Exception('No response from Gemini API.');
+      }
+
+      if (response.statusCode == 200) {
+        final responseBody = jsonDecode(response.body);
+        final aiResponseText = responseBody['candidates'][0]['content']['parts'][0]['text'];
+        
+        // 4. Clean Up Ai Response then Parse the JSON response and update the UI
+        String cleanResponse = aiResponseText.trim();
+
+        // Sometimes Gemini wraps the response in ```json ... ```
+        if (cleanResponse.startsWith('```')) {
+          cleanResponse = cleanResponse.replaceAll(RegExp(r'```[a-zA-Z]*'), '').trim();
+        }
+
+        // Then parse
+        final aiJson = jsonDecode(cleanResponse);
+        final suggestedTitle = aiJson['title'] as String?;
+        final suggestedDescription = aiJson['description'] as String?;
+
+        if (mounted) {
+          setState(() {
+            if (suggestedTitle != null) _titleController.text = suggestedTitle;
+            if (suggestedDescription != null) _descriptionController.text = suggestedDescription;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('AI analysis complete!'), backgroundColor: Colors.green));
+        }
+      } else {
+        throw Exception('Failed to get response from Gemini API: ${response.body}');
+      }
+    } catch (e) {
+      print("Error analyzing image: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('AI analysis failed. Please enter details manually.'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isAnalyzing = false);
+    }
+  }
+
+  Future<void> _submitRequest() async {
+    if (_isSubmitting) return; // Guard against double submits
     if (_imageFiles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please upload at least one photo of the issue.'), backgroundColor: Colors.orange),
       );
+      return;
+    }
+    
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
@@ -194,6 +277,11 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
           children: [
             _buildHandymanHeader(),
             const SizedBox(height: 24),
+            _buildSectionTitle('Add Photos *'),
+            _buildPhotoUploader(),
+            const SizedBox(height: 12),
+            _buildAnalyzeButton(), // <-- NEW BUTTON
+            const SizedBox(height: 24),
             _buildSectionTitle('What do you need help with? *'),
             _buildTitleField(),
             const SizedBox(height: 16),
@@ -202,9 +290,7 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
             const SizedBox(height: 24),
             _buildSectionTitle('Your Budget *'),
             _buildBudgetDropdown(),
-            const SizedBox(height: 24),
-            _buildSectionTitle('Add Photos *'),
-            _buildPhotoUploader(),
+            
           ],
         ),
       ),
@@ -272,12 +358,30 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
     );
   }
 
+  Widget _buildAnalyzeButton() {
+  return Center(
+    child: ElevatedButton.icon(
+      onPressed: _imageFiles.isEmpty || _isAnalyzing || _isSubmitting ? null : _analyzeImageWithAI,
+      icon: const Icon(Icons.auto_awesome_outlined),
+      label: _isAnalyzing
+          ? const _WaveAnimatedText(text: "Analyze Photo with AI")
+          : const Text("Analyze Photo with AI"),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+      ),
+    ),
+  );
+}
+
   Widget _buildTitleField() {
     return TextFormField(
       controller: _titleController,
+      enabled: !_isSubmitting, // disable while submitting
       textCapitalization: TextCapitalization.sentences,
       decoration: const InputDecoration(
         hintText: 'e.g., Mow the lawn, Fix leaky pipe, etc.',
+        hintStyle: TextStyle(fontStyle: FontStyle.italic),
         border: OutlineInputBorder(),
       ),
       validator: (value) {
@@ -306,9 +410,11 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
     return TextFormField(
       controller: _descriptionController,
       maxLines: 6,
+      enabled: !_isSubmitting, // disable while submitting
       textCapitalization: TextCapitalization.sentences,
       decoration: const InputDecoration(
         hintText: 'Please describe the job in as much detail as possible. What needs to be done? What are the measurements? etc.',
+        hintStyle: TextStyle(fontStyle: FontStyle.italic),
         border: OutlineInputBorder(),
         alignLabelWithHint: true,
       ),
@@ -387,7 +493,7 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
       items: _budgetRanges.map((range) {
         return DropdownMenuItem(value: range, child: Text(range));
       }).toList(),
-      onChanged: (value) {
+      onChanged: _isSubmitting ? null : (value) {
         setState(() => _selectedBudgetRange = value);
       },
       validator: (value) => value == null ? 'Please select a budget range' : null,
@@ -415,6 +521,96 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
               : const Text('Submit Request'),
         ),
       ),
+    );
+  }
+  
+  Future<http.Response?> _postWithRetries(Uri uri, Map<String, dynamic> body,
+    {int maxRetries = 3, Duration delay = const Duration(seconds: 2)}) async {
+  int attempt = 0;
+  http.Response? lastResponse;
+
+  while (attempt < maxRetries) {
+    final response = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode == 200) {
+      return response; // ✅ Success
+    }
+
+    final bodyJson = jsonDecode(response.body);
+    final errorCode = bodyJson['error']?['code'];
+    if (errorCode != 503) {
+      //  Non-retriable error
+      return response;
+    }
+
+    attempt++;
+    if (attempt < maxRetries) {
+      await Future.delayed(delay);
+    }
+    lastResponse = response;
+  }
+
+  return lastResponse; // after all retries
+}
+}
+
+class _WaveAnimatedText extends StatefulWidget {
+  final String text;
+
+  const _WaveAnimatedText({required this.text, super.key});
+
+  @override
+  State<_WaveAnimatedText> createState() => _WaveAnimatedTextState();
+}
+
+class _WaveAnimatedTextState extends State<_WaveAnimatedText> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (_, __) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(widget.text.length, (i) {
+            final progress = _controller.value;
+            // Phase shift per character
+            final phase = (progress * 2 * 3.1416) + (i * 0.4);
+            // Sine wave between 0.4 and 1.0
+            final opacity = 0.4 + 0.6 * (0.5 + 0.5 * sin(phase));
+            return Opacity(
+              opacity: opacity,
+              child: Text(
+                widget.text[i],
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }
