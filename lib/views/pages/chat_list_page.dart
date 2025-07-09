@@ -6,6 +6,8 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'ai_chat_page.dart';
+
 // A local view model to combine chat data with the other user's details
 class ChatListItemViewModel {
   final Chat chat;
@@ -158,13 +160,17 @@ class _ChatListPageState extends State<ChatListPage> {
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // TODO: Navigate to AI Chatbot page
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('AI Assistant coming soon!'))
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AiChatPage()),
           );
         },
-        child: const Icon(Icons.support_agent_outlined),
         tooltip: 'AI Assistant',
+        child: const CircleAvatar(
+          radius: 18,
+          backgroundImage: AssetImage("assets/images/ai_avatar.jpg"),
+          backgroundColor: Colors.transparent, // optional: to avoid white bg
+        ),
       ),
     );
   }
