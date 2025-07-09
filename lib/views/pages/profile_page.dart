@@ -167,7 +167,7 @@ class _ProfilePageState extends State<ProfilePage> {
           else if (_role == 'Handyman') ...[
             _buildListTile(Icons.bar_chart_outlined, 'Statistics'),
             _buildListTile(Icons.reviews_outlined, 'My Reviews'),
-            _buildListTile(Icons.post_add_outlined, 'Job Requests'),
+            _buildListTile(Icons.assignment_outlined, 'Job Requests'),
           ],
 
           const SizedBox(height: 20),

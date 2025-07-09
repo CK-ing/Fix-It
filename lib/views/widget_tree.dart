@@ -1,7 +1,13 @@
 import 'dart:async'; // Import for StreamSubscription
 
 import 'package:fixit_app_a186687/data/notifiers.dart';
+import 'package:fixit_app_a186687/views/pages/ai_chat_page.dart';
 import 'package:fixit_app_a186687/views/pages/bookings_page.dart';
+import 'package:fixit_app_a186687/views/pages/favourites_page.dart';
+import 'package:fixit_app_a186687/views/pages/handyman_reviews_page.dart';
+import 'package:fixit_app_a186687/views/pages/job_requests_page.dart';
+import 'package:fixit_app_a186687/views/pages/my_custom_requests_page.dart';
+import 'package:fixit_app_a186687/views/pages/statistics_page.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
@@ -74,20 +80,22 @@ class _WidgetTreeState extends State<WidgetTree> {
   }
   void _listenForAuthStateChanges() {
     _authSubscription = _auth.authStateChanges().listen((User? user) {
-      if (user == null && mounted) {
+      if (!mounted) return;
+      if (user == null) {
         // User has logged out, navigate to the Welcome Screen and clear all routes.
         print("Auth state changed: User is null. Navigating to WelcomeScreen.");
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const WelcomeScreen()),
           (Route<dynamic> route) => false,
         );
-      }else if (user != null) {
-      // User logged in or restored session
-      print("Auth state changed: User logged in or restored session.");
-      _currentUser = user;  // update cached user
-      _requestAndSaveToken();  //  ensure token saved
+      }else {
+        // User logged in or restored session
+    print("Auth state changed: User logged in or restored session.");
+      }
+    _currentUser = user;  // update cached user
+    _requestAndSaveToken();  //  ensure token saved
     }
-    });
+    );
   }
   void _listenForUnreadNotifications() {
     if (_currentUser == null) return;
@@ -227,6 +235,127 @@ class _WidgetTreeState extends State<WidgetTree> {
     );
   }
 
-  Widget _buildDrawer(BuildContext context, String currentUserRole) { List<Widget> menuItems; if (currentUserRole == 'Handyman') { menuItems = [ ListTile( leading: const Icon(Icons.dashboard_outlined), title: const Text('Dashboard'), onTap: () { selectedPageNotifier.value = 0; Navigator.pop(context); },), ListTile( leading: const Icon(Icons.calendar_month_outlined), title: const Text('Bookings'), onTap: () { selectedPageNotifier.value = 1; Navigator.pop(context); },), ListTile( leading: const Icon(Icons.chat_bubble_outline), title: const Text('Chat'), onTap: () { selectedPageNotifier.value = 2; Navigator.pop(context); },), ListTile( leading: const Icon(Icons.build_outlined), title: const Text('My Services'), onTap: () { selectedPageNotifier.value = 0; Navigator.pop(context); print('My Services tapped'); },), ListTile( leading: const Icon(Icons.event_available_outlined), title: const Text('Manage Availability'), onTap: () { /* TODO */ Navigator.pop(context); print('Manage Availability tapped'); },), ListTile( leading: const Icon(Icons.wallet_outlined), title: const Text('Earnings & Payouts'), onTap: () { /* TODO */ Navigator.pop(context); print('Earnings tapped'); },), ListTile( leading: const Icon(Icons.bar_chart_outlined), title: const Text('Statistics'), onTap: () { /* TODO */ Navigator.pop(context); print('Statistics tapped'); },), const Divider(), ListTile( leading: const Icon(Icons.help_outline), title: const Text('Help & Support'), onTap: () { /* TODO */ Navigator.pop(context); print('Help tapped'); },), ListTile( leading: const Icon(Icons.settings_outlined), title: const Text('Settings'), onTap: () { /* TODO */ Navigator.pop(context); print('Settings tapped'); },), _buildLogoutTile(context),]; } else { menuItems = [ ListTile( leading: const Icon(Icons.payment_outlined), title: const Text('Payment Methods'), onTap: () { /* TODO */ Navigator.pop(context); print('Payment Methods tapped'); },), ListTile( leading: const Icon(Icons.history_outlined), title: const Text('Booking History'), onTap: () { selectedPageNotifier.value = 1; Navigator.pop(context); },), ListTile( leading: const Icon(Icons.chat_bubble_outline), title: const Text('Chat'), onTap: () { selectedPageNotifier.value = 2; Navigator.pop(context); },), ListTile( leading: const Icon(Icons.favorite_border_outlined), title: const Text('Favorite Handymen'), onTap: () { /* TODO */ Navigator.pop(context); print('Favorites tapped'); },), ListTile( leading: const Icon(Icons.local_offer_outlined), title: const Text('Promotions'), onTap: () { /* TODO */ Navigator.pop(context); print('Promotions tapped'); },), const Divider(), ListTile( leading: const Icon(Icons.help_outline), title: const Text('Help & Support'), onTap: () { /* TODO */ Navigator.pop(context); print('Help tapped'); },), ListTile( leading: const Icon(Icons.settings_outlined), title: const Text('Settings'), onTap: () { /* TODO */ Navigator.pop(context); print('Settings tapped'); },), _buildLogoutTile(context),]; } return Drawer( child: ListView( padding: EdgeInsets.zero, children: <Widget>[ UserAccountsDrawerHeader( accountName: Text(_drawerUserName), accountEmail: Text(_drawerUserEmail), currentAccountPicture: CircleAvatar( backgroundColor: Theme.of(context).colorScheme.primaryContainer, backgroundImage: (_drawerUserPhotoUrl != null && _drawerUserPhotoUrl!.isNotEmpty) ? NetworkImage(_drawerUserPhotoUrl!) : null, child: (_drawerUserPhotoUrl == null || _drawerUserPhotoUrl!.isEmpty) ? Text( _drawerUserName.isNotEmpty ? _drawerUserName[0].toUpperCase() : "?", style: const TextStyle(fontSize: 40.0)) : null,), decoration: BoxDecoration( color: Theme.of(context).colorScheme.primary ),), if (_isLoadingDrawerData) const Padding( padding: EdgeInsets.all(20.0), child: Center(child: CircularProgressIndicator(strokeWidth: 2.0)),) else ...menuItems,],),); }
-  Widget _buildLogoutTile(BuildContext context) { return ListTile( leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Logout', style: TextStyle(color: Colors.red)), onTap: () async { final navigator = Navigator.of(context); final scaffoldMessenger = ScaffoldMessenger.of(context); try { print('Attempting to sign out...'); if (navigator.canPop()) { navigator.pop(); } await FirebaseAuth.instance.signOut(); print('Sign out successful.'); navigator.pushAndRemoveUntil( MaterialPageRoute(builder: (context) => const WelcomeScreen()), (Route<dynamic> route) => false,); } catch (e) { print("Error logging out: $e"); if (scaffoldMessenger.mounted) { scaffoldMessenger.showSnackBar(SnackBar(content: Text('Logout failed: ${e.toString()}'))); } if (navigator.canPop()) { navigator.pop(); } } },); }
+  Widget _buildDrawer(BuildContext context, String currentUserRole) {
+    // Helper function to create section titles
+    Widget buildSectionTitle(String title) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+        child: Text(
+          title.toUpperCase(),
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      );
+    }
+
+    // Helper function to create tappable list items
+    Widget buildDrawerItem(IconData icon, String title, VoidCallback onTap) {
+      return ListTile(
+        leading: Icon(icon, color: Colors.grey[800]),
+        title: Text(title),
+        onTap: () {
+          Navigator.pop(context); // Close the drawer first
+          onTap(); // Then perform the action
+        },
+      );
+    }
+
+    // Define menu items based on user role
+    List<Widget> menuItems;
+    if (currentUserRole == 'Handyman') {
+      menuItems = [
+        buildSectionTitle('Business Tools'),
+        buildDrawerItem(Icons.build_outlined, 'My Services', () {
+          selectedPageNotifier.value = 0; // Go to Home/Dashboard
+        }),
+        buildDrawerItem(Icons.assignment_outlined, 'Job Requests', () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const JobRequestsPage()));
+        }),
+        buildDrawerItem(Icons.bar_chart_outlined, 'Statistics', () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsPage()));
+        }),
+        buildDrawerItem(Icons.reviews_outlined, 'My Reviews', () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const HandymanReviewsPage()));
+        }),
+        buildSectionTitle('Account & Support'),
+        buildDrawerItem(Icons.help_outline, 'Help & Support', () {
+           Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatPage()));
+        }),
+        buildDrawerItem(Icons.settings_outlined, 'Settings', () {
+          // TODO: Navigate to Settings Page
+        }),
+        _buildLogoutTile(context),
+      ];
+    } else { // Homeowner
+      menuItems = [
+        buildSectionTitle('My Activity'),
+        buildDrawerItem(Icons.search_outlined, 'Find Services', () {
+          selectedPageNotifier.value = 0; // Go to Home
+        }),
+        buildDrawerItem(Icons.favorite_border, 'My Favourites', () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const FavouritesPage()));
+        }),
+        buildDrawerItem(Icons.list_alt_outlined, 'My Bookings', () {
+          selectedPageNotifier.value = 1; // Go to Bookings tab
+        }),
+        buildDrawerItem(Icons.assignment_outlined, 'My Custom Requests', () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const MyCustomRequestsPage()));
+        }),
+        buildSectionTitle('Support & Account'),
+        buildDrawerItem(Icons.help_outline, 'Help & Support', () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatPage()));
+        }),
+        buildDrawerItem(Icons.settings_outlined, 'Settings', () {
+          // TODO: Navigate to Settings Page
+        }),
+        _buildLogoutTile(context),
+      ];
+    }
+
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          UserAccountsDrawerHeader(
+            accountName: Text(_drawerUserName),
+            accountEmail: Text(_drawerUserEmail),
+            currentAccountPicture: CircleAvatar(
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              backgroundImage: (_drawerUserPhotoUrl != null && _drawerUserPhotoUrl!.isNotEmpty)
+                  ? NetworkImage(_drawerUserPhotoUrl!)
+                  : null,
+              child: (_drawerUserPhotoUrl == null || _drawerUserPhotoUrl!.isEmpty)
+                  ? Text(
+                      _drawerUserName.isNotEmpty ? _drawerUserName[0].toUpperCase() : "?",
+                      style: const TextStyle(fontSize: 40.0))
+                  : null,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+            ),
+          ),
+          if (_isLoadingDrawerData)
+            const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2.0)),
+            )
+          else
+            ...menuItems,
+        ],
+      ),
+    );
+  }
+  Widget _buildLogoutTile(BuildContext context) {
+  return ListTile(
+    leading: const Icon(Icons.logout, color: Colors.red),
+    title: const Text('Logout', style: TextStyle(color: Colors.red)),
+    onTap: () {
+      Navigator.pop(context); // Close drawer
+      selectedPageNotifier.value = 3; // Switch to Profile tab
+    },
+  );
+}
 }

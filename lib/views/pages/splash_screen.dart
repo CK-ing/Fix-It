@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:fixit_app_a186687/views/pages/auth/welcome_screen.dart';
 import 'package:fixit_app_a186687/views/widget_tree.dart';
 import 'package:flutter/material.dart';
@@ -61,6 +62,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           final data = Map<String, dynamic>.from(snapshot.value as Map);
           final role = data['role'] as String?;
           if (role != null) {
+            selectedPageNotifier.value = 0;
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (_) => WidgetTree(userRole: role)),

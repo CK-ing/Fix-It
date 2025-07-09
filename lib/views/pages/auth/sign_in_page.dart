@@ -1,3 +1,4 @@
+import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -108,6 +109,7 @@ class _SignInPageState extends State<SignInPage> {
         final userData = Map<String, dynamic>.from(snapshot.value as Map);
         final userRole = userData['role'] ?? 'Handyman';
         _saveCredentials();
+        selectedPageNotifier.value = 0;
         Navigator.pushReplacement(context, MaterialPageRoute(
           builder: (_) => WidgetTree(userRole: userRole),
         ));
@@ -162,6 +164,7 @@ class _SignInPageState extends State<SignInPage> {
       if (snapshot.exists && snapshot.value != null) {
         final userData = Map<String, dynamic>.from(snapshot.value as Map);
         final userRole = userData['role'] ?? 'Handyman';
+        selectedPageNotifier.value = 0;
         Navigator.pushReplacement(context, MaterialPageRoute(
           builder: (_) => WidgetTree(userRole: userRole),
         ));
