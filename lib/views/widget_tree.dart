@@ -4,6 +4,7 @@ import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:fixit_app_a186687/views/pages/ai_chat_page.dart';
 import 'package:fixit_app_a186687/views/pages/bookings_page.dart';
 import 'package:fixit_app_a186687/views/pages/favourites_page.dart';
+import 'package:fixit_app_a186687/views/pages/handyman_calendar_page.dart';
 import 'package:fixit_app_a186687/views/pages/handyman_reviews_page.dart';
 import 'package:fixit_app_a186687/views/pages/job_requests_page.dart';
 import 'package:fixit_app_a186687/views/pages/my_custom_requests_page.dart';
@@ -270,6 +271,9 @@ class _WidgetTreeState extends State<WidgetTree> {
         buildSectionTitle('Business Tools'),
         buildDrawerItem(Icons.build_outlined, 'My Services', () {
           selectedPageNotifier.value = 0; // Go to Home/Dashboard
+        }),
+        buildDrawerItem(Icons.calendar_month_outlined, 'My Schedule', () {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const HandymanCalendarPage()));
         }),
         buildDrawerItem(Icons.assignment_outlined, 'Job Requests', () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const JobRequestsPage()));
