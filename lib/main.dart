@@ -1,10 +1,11 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:fixit_app_a186687/data/notifiers.dart';
+import 'package:fixit_app_a186687/services/settings_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'views/pages/splash_screen.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 // This function MUST be a top-level function (not inside a class).
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -25,6 +26,7 @@ Future<void> main() async {
   await Firebase.initializeApp();
 
   await dotenv.load(fileName: ".env");
+  await SettingsService.loadSettings();
 
   // --- NEW: Set the background messaging handler. ---
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -90,20 +92,50 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
-    // Your ValueListenableBuilder for dark mode is preserved perfectly.
-    return ValueListenableBuilder(
-      valueListenable: isDarkModeNotifier,
-      builder: (context, isDarkMode, child) {
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: isDarkMode ? Brightness.dark : Brightness.light,
-            ),
-            useMaterial3: true,
-          ),
-          home: const SplashScreen(),
+    // This top-level builder now listens to all three notifiers
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (_, themeMode, __) {
+        return ValueListenableBuilder<Locale>(
+          valueListenable: localeNotifier,
+          builder: (_, locale, __) {
+            return ValueListenableBuilder<double>(
+              valueListenable: fontSizeNotifier,
+              builder: (_, textScale, __) {
+                return MaterialApp(
+                  debugShowCheckedModeBanner: false,
+                  
+                  // --- LOCALIZATION & LANGUAGE SWITCHING ---
+                  locale: locale, // Use the notifier for the current locale
+                  localizationsDelegates: AppLocalizations.localizationsDelegates,
+                  supportedLocales: AppLocalizations.supportedLocales,
+                  
+                  // --- THEME ---
+                  theme: ThemeData(
+                    colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.light),
+                    useMaterial3: true,
+                  ),
+                  darkTheme: ThemeData(
+                    colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
+                    useMaterial3: true,
+                  ),
+                  themeMode: themeMode, // Use the notifier for the theme mode
+                  
+                  // --- FONT SIZE ---
+                  builder: (context, child) {
+                    return MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        textScaler: TextScaler.linear(textScale),
+                      ),
+                      child: child!,
+                    );
+                  },
+                  
+                  home: const SplashScreen(),
+                );
+              },
+            );
+          },
         );
       },
     );

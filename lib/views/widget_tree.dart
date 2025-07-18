@@ -8,11 +8,13 @@ import 'package:fixit_app_a186687/views/pages/handyman_calendar_page.dart';
 import 'package:fixit_app_a186687/views/pages/handyman_reviews_page.dart';
 import 'package:fixit_app_a186687/views/pages/job_requests_page.dart';
 import 'package:fixit_app_a186687/views/pages/my_custom_requests_page.dart';
+import 'package:fixit_app_a186687/views/pages/settings_page.dart';
 import 'package:fixit_app_a186687/views/pages/statistics_page.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 // Import Page Widgets
 import 'pages/homeowner_home_page.dart';
@@ -159,12 +161,24 @@ class _WidgetTreeState extends State<WidgetTree> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final String currentUserRole = widget.userRole;
     return ValueListenableBuilder<int>(
       valueListenable: selectedPageNotifier,
       builder: (context, selectedPage, child) {
         String getTitle() {
-          switch (selectedPage) { case 0: return currentUserRole == 'Handyman' ? 'Dashboard' : 'FixIt'; case 1: return 'Bookings'; case 2: return 'Chat'; case 3: return 'Profile'; default: return 'FixIt'; }
+          switch (selectedPage) {
+          case 0:
+            return currentUserRole == 'Handyman' ? l10n.dashboard : 'FixIt';
+          case 1:
+            return l10n.bookings; // Use translation
+          case 2:
+            return l10n.chat; // Use translation
+          case 3:
+            return l10n.profile; // Use translation
+          default:
+            return 'FixIt';
+        }
         }
         List<Widget> getActions() {
           // Settings button on Profile page
@@ -225,7 +239,7 @@ class _WidgetTreeState extends State<WidgetTree> {
                   actions: getActions(),
                   elevation: 1.0,
                 ),
-          drawer: (selectedPage == 0) ? _buildDrawer(context, currentUserRole) : null,
+          drawer: (selectedPage == 0) ? _buildDrawer(context, currentUserRole, l10n) : null,
           body: getPages(currentUserRole).elementAt(selectedPage),
           bottomNavigationBar: NavbarWidget(
             userRole: currentUserRole,
@@ -236,7 +250,7 @@ class _WidgetTreeState extends State<WidgetTree> {
     );
   }
 
-  Widget _buildDrawer(BuildContext context, String currentUserRole) {
+  Widget _buildDrawer(BuildContext context, String currentUserRole, dynamic l10n) {
     // Helper function to create section titles
     Widget buildSectionTitle(String title) {
       return Padding(
@@ -268,54 +282,60 @@ class _WidgetTreeState extends State<WidgetTree> {
     List<Widget> menuItems;
     if (currentUserRole == 'Handyman') {
       menuItems = [
-        buildSectionTitle('Business Tools'),
-        buildDrawerItem(Icons.build_outlined, 'My Services', () {
+        buildSectionTitle(l10n.drawerBusinessTools),
+        buildDrawerItem(Icons.build_outlined, l10n.drawerMyServices, () {
           selectedPageNotifier.value = 0; // Go to Home/Dashboard
         }),
-        buildDrawerItem(Icons.calendar_month_outlined, 'My Schedule', () {
+        buildDrawerItem(Icons.calendar_month_outlined, l10n.drawerMySchedule, () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const HandymanCalendarPage()));
         }),
-        buildDrawerItem(Icons.assignment_outlined, 'Job Requests', () {
+        buildDrawerItem(Icons.assignment_outlined, l10n.drawerJobRequests, () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const JobRequestsPage()));
         }),
-        buildDrawerItem(Icons.bar_chart_outlined, 'Statistics', () {
+        buildDrawerItem(Icons.bar_chart_outlined, l10n.drawerStatistics, () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const StatisticsPage()));
         }),
-        buildDrawerItem(Icons.reviews_outlined, 'My Reviews', () {
+        buildDrawerItem(Icons.reviews_outlined, l10n.drawerMyReviews, () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const HandymanReviewsPage()));
         }),
-        buildSectionTitle('Account & Support'),
-        buildDrawerItem(Icons.help_outline, 'Help & Support', () {
+        buildSectionTitle(l10n.drawerAccountSupport),
+        buildDrawerItem(Icons.help_outline, l10n.helpSupport, () {
            Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatPage()));
         }),
-        buildDrawerItem(Icons.settings_outlined, 'Settings', () {
-          // TODO: Navigate to Settings Page
+        buildDrawerItem(Icons.settings_outlined, l10n.settings, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsPage()),
+          );
         }),
-        _buildLogoutTile(context),
+        _buildLogoutTile(context, l10n),
       ];
     } else { // Homeowner
       menuItems = [
-        buildSectionTitle('My Activity'),
-        buildDrawerItem(Icons.search_outlined, 'Find Services', () {
+        buildSectionTitle(l10n.drawerMyActivity),
+        buildDrawerItem(Icons.search_outlined, l10n.drawerFindServices, () {
           selectedPageNotifier.value = 0; // Go to Home
         }),
-        buildDrawerItem(Icons.favorite_border, 'My Favourites', () {
+        buildDrawerItem(Icons.favorite_border, l10n.drawerMyFavourites, () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const FavouritesPage()));
         }),
-        buildDrawerItem(Icons.list_alt_outlined, 'My Bookings', () {
+        buildDrawerItem(Icons.list_alt_outlined, l10n.drawerMyBookings, () {
           selectedPageNotifier.value = 1; // Go to Bookings tab
         }),
-        buildDrawerItem(Icons.assignment_outlined, 'My Custom Requests', () {
+        buildDrawerItem(Icons.assignment_outlined, l10n.drawerMyCustomRequests, () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const MyCustomRequestsPage()));
         }),
-        buildSectionTitle('Support & Account'),
-        buildDrawerItem(Icons.help_outline, 'Help & Support', () {
+        buildSectionTitle(l10n.drawerAccountSupport),
+        buildDrawerItem(Icons.help_outline, l10n.helpSupport, () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatPage()));
         }),
-        buildDrawerItem(Icons.settings_outlined, 'Settings', () {
-          // TODO: Navigate to Settings Page
+        buildDrawerItem(Icons.settings_outlined, l10n.settings, () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsPage()),
+          );
         }),
-        _buildLogoutTile(context),
+        _buildLogoutTile(context, l10n),
       ];
     }
 
@@ -352,10 +372,10 @@ class _WidgetTreeState extends State<WidgetTree> {
       ),
     );
   }
-  Widget _buildLogoutTile(BuildContext context) {
+  Widget _buildLogoutTile(BuildContext context, dynamic l10n) {
   return ListTile(
     leading: const Icon(Icons.logout, color: Colors.red),
-    title: const Text('Logout', style: TextStyle(color: Colors.red)),
+    title: Text(l10n.drawerLogout, style: const TextStyle(color: Colors.red)),
     onTap: () {
       Navigator.pop(context); // Close drawer
       selectedPageNotifier.value = 3; // Switch to Profile tab

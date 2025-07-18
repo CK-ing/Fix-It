@@ -1,5 +1,6 @@
 import 'package:fixit_app_a186687/data/notifiers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 class NavbarWidget extends StatelessWidget {
   final String userRole;
@@ -13,6 +14,7 @@ class NavbarWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return ValueListenableBuilder(
       valueListenable: selectedPageNotifier,
       builder: (context, selectedPage, child) {
@@ -22,15 +24,15 @@ class NavbarWidget extends StatelessWidget {
             selectedPageNotifier.value = value;
           },
           destinations: [
-            const NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home),
-              label: 'Home',
+            NavigationDestination(
+              icon: const Icon(Icons.home_outlined),
+              selectedIcon: const Icon(Icons.home),
+              label: l10n.home,
             ),
-            const NavigationDestination(
-              icon: Icon(Icons.list_alt_outlined),
-              selectedIcon: Icon(Icons.list_alt),
-              label: 'Bookings',
+            NavigationDestination(
+              icon: const Icon(Icons.list_alt_outlined),
+              selectedIcon: const Icon(Icons.list_alt),
+              label: l10n.bookings,
             ),
             NavigationDestination(
               icon: Stack(
@@ -53,12 +55,12 @@ class NavbarWidget extends StatelessWidget {
                 ],
               ),
               selectedIcon: const Icon(Icons.chat_bubble),
-              label: 'Chat',
+              label: l10n.chat,
             ),
-            const NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person),
-              label: 'Profile',
+            NavigationDestination(
+              icon: const Icon(Icons.person_outline),
+              selectedIcon: const Icon(Icons.person),
+              label: l10n.profile,
             ),
           ],
         );

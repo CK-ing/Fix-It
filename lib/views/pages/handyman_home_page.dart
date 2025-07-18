@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../../models/handyman_services.dart';
 import '../../models/reviews.dart';
 import 'add_handyman_service.dart';
@@ -216,13 +216,14 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final String? handymanId = _currentUser?.uid;
 
     final List<QuickStat> quickStatsData = [
-    QuickStat(icon: Icons.pending_actions_outlined, label: 'Pending Bookings', value: _pendingBookingsCount.toString(), color: Colors.orange, navigateToPageNotifierIndex: 1),
+    QuickStat(icon: Icons.pending_actions_outlined, label: l10n.statPendingBookings, value: _pendingBookingsCount.toString(), color: Colors.orange, navigateToPageNotifierIndex: 1),
     QuickStat(
       icon: Icons.assignment_late_outlined,
-      label: 'New Job Requests',
+      label: l10n.statNewJobRequests,
       value: _newJobRequestsCount.toString(), // Use the real count
       color: Colors.green,
       // This stat card will now navigate directly using Navigator.push
@@ -231,7 +232,7 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
     ),
     QuickStat(
       icon: Icons.mark_chat_unread_outlined,
-      label: 'Unread\n Messages',
+      label: l10n.statUnreadMessages,
       value: _unreadMessagesCount.toString(),
       color: Colors.blue,
       navigateToPageNotifierIndex: 2,
@@ -253,11 +254,11 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildSearchBar(),
+              _buildSearchBar(l10n),
               const SizedBox(height: 20),
               _buildQuickStats(quickStatsData),
               const SizedBox(height: 24),
-              Text('My Services', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+              Text(l10n.myServices, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
               if (handymanId != null)
                 _buildMyServicesStream(handymanId)
@@ -280,7 +281,7 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchBar(AppLocalizations l10n) {
     return Card(
       elevation: 2.0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25.0)),
@@ -288,9 +289,9 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
         padding: const EdgeInsets.symmetric(horizontal: 8.0),
         child: TextField(
           controller: _searchController,
-          decoration: const InputDecoration(
-            hintText: 'Search your listed services...',
-            prefixIcon: Icon(Icons.search),
+          decoration: InputDecoration(
+            hintText: l10n.searchHintHandyman,
+            prefixIcon: const Icon(Icons.search),
             border: InputBorder.none,
           ),
         ),
@@ -315,7 +316,7 @@ class _HandymanHomePageState extends State<HandymanHomePage> {
         child: InkWell(
           onTap: () {
   // If it's the job requests card, navigate manually
-  if (stat.label == 'New Job Requests') {
+  if (stat.icon == Icons.assignment_late_outlined) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const JobRequestsPage()),
