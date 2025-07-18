@@ -15,6 +15,7 @@ This project was developed as a final year project, demonstrating a full-stack i
 - Handyman Statistics Dashboard: A data-rich dashboard for handymen to track their revenue, job history, and performance with filterable charts and trend indicators.
 - In-App Chat: Real-time messaging between homeowners and handymen within the context of a booking.
 - AI-Powered Chatbot: An intelligent assistant designed to answer frequently asked questions (FAQs) for both homeowners and handymen, providing instant support.
+- AI-Powered Image Recognition: An artificial intelligent that recognizes uploaded images to automatically generate title and descriptions of home maintenance issues.
 
 ## Technology Stack
 - Framework: Flutter
