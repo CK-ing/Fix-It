@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.7.2
+  sdk: '>=3.2.3 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  camera: ^0.10.5+9 # Check for the latest version on pub.dev
+  flutter_vision: ^1.1.4
   printing: ^5.11.1 # Add this line
   pdf: ^3.10.8      # This is a dependency of the printing package
   firebase_core: ^3.9.0
@@ -87,8 +89,10 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
+    - assets/
     - assets/images/
     - .env
+    - assets/tflite/
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

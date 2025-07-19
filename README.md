@@ -16,6 +16,7 @@ This project was developed as a final year project, demonstrating a full-stack i
 - In-App Chat: Real-time messaging between homeowners and handymen within the context of a booking.
 - AI-Powered Chatbot: An intelligent assistant designed to answer frequently asked questions (FAQs) for both homeowners and handymen, providing instant support.
 - AI-Powered Image Recognition: An artificial intelligent that recognizes uploaded images to automatically generate title and descriptions of home maintenance issues.
+- AI live camera home repair issues detection: Implement Tensorflowlite, Flutter Vision and Gemini API for fast & accurate detection of home repair issues
 
 ## Technology Stack
 - Framework: Flutter
@@ -25,7 +26,8 @@ This project was developed as a final year project, demonstrating a full-stack i
   - Authentication: Firebase Auth
   - Storage: Firebase Storage for user-uploaded images.
   - Serverless Functions: Firebase Cloud Functions for sending push notifications.
-- AI / Machine Learning: Google Gemini API for the intelligent chatbot.
+  - AI Chatbot: Google Gemini API for the intelligent chatbot.
+  - Live AI Camera Home Repair Issues Detection: TensorFlow Lite (TFLite), Flutter Vision, Google Gemini API and manually trained YOLOv8 model (real-time object detection)
 - Key Packages:
   - firebase_core, firebase_auth, firebase_database, firebase_storage
   - firebase_messaging, flutter_local_notifications for push notifications
