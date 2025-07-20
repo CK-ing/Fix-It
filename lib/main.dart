@@ -181,7 +181,7 @@ class _LiveDetectionScreenState extends State<LiveDetectionScreen> {
         imageHeight: image.height,
         imageWidth: image.width,
         iouThreshold: 0.4,
-        confThreshold: 0.01,
+        confThreshold: 0.4,
         classThreshold: 0.5,
       );
       if (result.isNotEmpty && mounted) {

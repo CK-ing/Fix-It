@@ -121,7 +121,7 @@ class _CustomRequestPageState extends State<CustomRequestPage> {
           imageHeight: decodedImage.height, // Pass the actual image height
           imageWidth: decodedImage.width,   // Pass the actual image width
           iouThreshold: 0.4,
-          confThreshold: 0.01,
+          confThreshold: 0.4,
           classThreshold: 0.5);
 
       if (mounted && recognitions.isNotEmpty) {
